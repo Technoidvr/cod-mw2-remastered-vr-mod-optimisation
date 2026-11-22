@@ -54,14 +54,24 @@ local modern_sounds = {
     }
 }
 
+local function call_getentref(entity)
+    return entity:getentref()
+end
+
+local function call_isalive(victim)
+    return game:isalive(victim)
+end
+
+local function call_trigger_duck()
+    return game:scriptcall(DUCK_SCRIPT, "trigger")
+end
+
 local function get_entref(entity)
     if entity == nil then
         return nil, nil
     end
 
-    local ok, entnum, classnum = pcall(function()
-        return entity:getentref()
-    end)
+    local ok, entnum, classnum = pcall(call_getentref, entity)
     if not ok then
         return nil, nil
     end
@@ -99,9 +109,7 @@ local function trigger_duck()
     -- context is reloaded. Stop attempting ducking after an adapter failure;
     -- feedback audio remains independent of optional mix adjustment.
     if duck_error_reported then return end
-    local ok, submitted_groups = pcall(function()
-        return game:scriptcall(DUCK_SCRIPT, "trigger")
-    end)
+    local ok, submitted_groups = pcall(call_trigger_duck)
     if not ok or submitted_groups ~= DUCK_GROUP_COUNT then
         report_duck_error("submit", ok
             and ("expected " .. DUCK_GROUP_COUNT .. " volume groups, got " .. tostring(submitted_groups))
@@ -153,10 +161,12 @@ local function resolve_damage(key, killed)
     end
 end
 
-local function queue_feedback(victim, style, headshot)
-    local entnum, classnum = get_entref(victim)
+local function queue_feedback(victim, style, headshot, entnum, classnum)
     if entnum == nil then
-        return
+        entnum, classnum = get_entref(victim)
+        if entnum == nil then
+            return
+        end
     end
 
     local key = entnum .. ":" .. classnum
@@ -180,7 +190,7 @@ local function queue_feedback(victim, style, headshot)
     pending.timeout = game:ontimeout(function()
         -- A target can be removed before the next frame; its absence alone
         -- cannot establish a kill. Always retire its listener and timeout.
-        local ok, alive = pcall(function() return game:isalive(victim) end)
+        local ok, alive = pcall(call_isalive, victim)
         if ok then
             resolve_damage(key, alive == 0)
         else
@@ -190,13 +200,21 @@ local function queue_feedback(victim, style, headshot)
 end
 
 game:onentitydamage(function(victim, inflictor, attacker, damage, mod, weapon, direction, hitloc)
+    if damage <= 0 then
+        return nil
+    end
+
     local style = feedback_style()
+    if style == STYLE_DISABLED then
+        return nil
+    end
+
+    if not is_local_player(attacker) then
+        return nil
+    end
+
     local victim_entnum, victim_classnum = get_entref(victim)
-    if style == STYLE_DISABLED
-        or damage <= 0
-        or victim_entnum == nil
-        or not is_local_player(attacker)
-        or (victim_entnum == 0 and victim_classnum == 0) then
+    if victim_entnum == nil or (victim_entnum == 0 and victim_classnum == 0) then
         return nil
     end
 
@@ -204,7 +222,7 @@ game:onentitydamage(function(victim, inflictor, attacker, damage, mod, weapon, d
         return nil
     end
 
-    queue_feedback(victim, style, is_head_hit(hitloc))
+    queue_feedback(victim, style, is_head_hit(hitloc), victim_entnum, victim_classnum)
     return nil
 end)
 

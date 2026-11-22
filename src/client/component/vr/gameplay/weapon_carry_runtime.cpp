@@ -809,6 +809,24 @@ namespace vr::gameplay::weapons::carry
 			                      slot_settings[4]->current.value,
 			                      slot_settings[5]->current.value};
 			const auto slots = locate_holsters(body, layout);
+			auto forgiving_layout = layout;
+			forgiving_layout.waist_radius += 0.04f;
+			forgiving_layout.back_radius += 0.04f;
+			const auto forgiving_torso_slots = locate_holsters(body, forgiving_layout);
+			auto head_only_body = body;
+			head_only_body.body.valid = false;
+			const auto head_slots = locate_holsters(head_only_body, forgiving_layout);
+			const auto resolve_holster_hit = [&](hands::vec hand_pos, hands::vec wrist_pos, unsigned eligible) noexcept
+			{
+				for (const auto& candidate_slots : {slots, forgiving_torso_slots, head_slots})
+				{
+					if (const auto found = hit(candidate_slots, hand_pos, eligible); found != location::absent)
+						return found;
+					if (const auto found = hit(candidate_slots, wrist_pos, eligible); found != location::absent)
+						return found;
+				}
+				return location::absent;
+			};
 			if (interaction::debug::body_enabled())
 			{
 				interaction::debug::body_sample diagnostic;
@@ -856,11 +874,19 @@ namespace vr::gameplay::weapons::carry
 					    detail};
 				};
 				const auto last = valid_hand(v->owner.rear) ? v->owner.rear : v->owner.support;
+				const unsigned eligible_slots = v->policy.waist ? 7u : (1u << static_cast<unsigned>(location::back));
 				const auto target = (valid_hands & (1u << static_cast<unsigned>(last)))
-				                        ? hit(slots, hands[static_cast<int>(last)].position)
+				                        ? resolve_holster_hit(hands[static_cast<int>(last)].position,
+				                                              wrists[static_cast<int>(last)].position,
+				                                              eligible_slots)
 				                        : location::absent;
+				const bool stowing_from_rear = target != location::absent && valid_hand(v->owner.rear) &&
+				                               (event.released & (1u << static_cast<unsigned>(v->owner.rear)));
+				const unsigned effective_released = stowing_from_rear && valid_hand(v->owner.support)
+				                                        ? (event.released | (1u << static_cast<unsigned>(v->owner.support)))
+				                                        : event.released;
 				const auto released_hand = [&](hand actor)
-				{ return !valid_hand(actor) || (event.released & (1u << unsigned(actor))); };
+				{ return !valid_hand(actor) || (effective_released & (1u << unsigned(actor))); };
 				if (sequences::for_player(native.player).block_carry)
 				{
 					record_release(outcome::retained, "story owns storage and drop policy");
@@ -890,14 +916,14 @@ namespace vr::gameplay::weapons::carry
 				// waiting for the asynchronous native selection would permit another
 				// reload tick after the gun had already been placed on the body.
 				if (valid_hand(v->owner.holding_hand()) &&
-				    (event.released & (1u << static_cast<unsigned>(v->owner.holding_hand()))))
+				    (effective_released & (1u << static_cast<unsigned>(v->owner.holding_hand()))))
 				{
 					physical_reload::presentation magazine;
 					cylinder::presentation revolver;
 					break_action::presentation hinged;
 					tube::presentation shotgun;
 					if (!launcher::prepare_transfer(id) ||
-					    !underbarrel::prepare_carry_release(v->owner, event.released, interaction_input) ||
+					    !underbarrel::prepare_carry_release(v->owner, effective_released, interaction_input) ||
 					    !physical_reload::prepare_transfer(id, magazine) ||
 					    !cylinder::prepare_transfer(id, revolver) || !tube::prepare_transfer(id, shotgun) ||
 					    !break_action::prepare_transfer(id, hinged))
@@ -917,7 +943,7 @@ namespace vr::gameplay::weapons::carry
 				    placement.geometry ? native_carry::status() : "held pose or muzzle geometry unavailable";
 				const auto r = owned.release(
 				    id,
-				    event.released,
+				    effective_released,
 				    target,
 				    clear,
 				    [&](const auto& gun)
@@ -986,7 +1012,14 @@ namespace vr::gameplay::weapons::carry
 					const auto retention = retained_support(*held_pose.authored, held_pose.gun, held_pose.supports[off],
 						wrists[int(v.owner.rear)].position, wrists[off].position, body.units_per_meter, true, support_locked,
 						support_locked || underbarrel::ordinary_support_allowed(held_pose, wrists[off], v.owner.support, true));
-					if (retention == support_retention::released)
+					const float support_dist_meters = body.units_per_meter > 0.0f
+						? hands::length(hands::sub(wrists[off].position,
+							hands::pose_math::compose(held_pose.gun, held_pose.supports[off]).position)) / body.units_per_meter
+						: 0.0f;
+					const bool trigger_reload_reach =
+						interaction_input.trigger[off].active && interaction_input.trigger[off].down &&
+						support_dist_meters > std::max(0.18f, held_pose.authored->acquire_meters * 1.25f);
+					if (retention == support_retention::released || trigger_reload_reach)
 					{
 						const auto result = owned.release(
 						    v.id, 1u << off, location::absent, false, [](const instance&) { return false; });
@@ -1148,9 +1181,29 @@ namespace vr::gameplay::weapons::carry
 						           true});
 				}
 			}
+			const auto resolve_draw = [&](int hand_index) noexcept
+			{
+				auto forgiving = batch.layout;
+				forgiving.waist_radius += 0.04f;
+				forgiving.back_radius += 0.04f;
+				auto head_only = body;
+				head_only.body.valid = false;
+				const auto forgiving_torso = locate_holsters(body, forgiving);
+				const auto head_fallback = locate_holsters(head_only, forgiving);
+				for (const auto& candidate_slots : {slots, forgiving_torso, head_fallback})
+				{
+					if (const auto found = draw_contact(owned, candidate_slots, wrists[hand_index].position);
+					    found != location::absent)
+						return found;
+					if (const auto found = draw_contact(owned, candidate_slots, batch.hand_positions[hand_index]);
+					    found != location::absent)
+						return found;
+				}
+				return location::absent;
+			};
 			const auto place = sequences::for_player(batch.player).block_carry
 			                       ? location::absent
-			                       : draw_contact(owned, slots, wrists[h].position);
+			                       : resolve_draw(h);
 			const auto* item = place == location::back ? owned.next_back() : owned.in_slot(place);
 			if (item && place != location::absent)
 			{
@@ -1228,9 +1281,29 @@ namespace vr::gameplay::weapons::carry
 						break;
 					}
 				}
+			const auto resolve_draw = [&](int hand_index) noexcept
+			{
+				auto forgiving = batch.layout;
+				forgiving.waist_radius += 0.04f;
+				forgiving.back_radius += 0.04f;
+				auto head_only = body;
+				head_only.body.valid = false;
+				const auto forgiving_torso = locate_holsters(body, forgiving);
+				const auto head_fallback = locate_holsters(head_only, forgiving);
+				for (const auto& candidate_slots : {slots, forgiving_torso, head_fallback})
+				{
+					if (const auto found = draw_contact(owned, candidate_slots, batch.hand_positions[hand_index]);
+					    found != location::absent)
+						return found;
+					if (const auto found = draw_contact(owned, candidate_slots, wrists[hand_index].position);
+					    found != location::absent)
+						return found;
+				}
+				return location::absent;
+			};
 			const auto place = sequences::for_player(batch.player).block_carry
 			                       ? location::absent
-			                       : draw_contact(owned, slots, batch.hand_positions[h]);
+			                       : resolve_draw(h);
 			const auto* item = place == location::back ? owned.next_back() : owned.in_slot(place);
 			const auto draw =
 			    item && hi::granted(which, hi::domain::carry, item->id) ? place : location::absent;

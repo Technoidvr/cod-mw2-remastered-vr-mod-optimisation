@@ -9,6 +9,7 @@
 #include "campaign/sequences/gulag.hpp"
 #include "interaction_debug.hpp"
 #include "../head_pose_bridge.hpp"
+#include "../lazy_storage.hpp"
 #include "../controller_input.hpp"
 #include "component/console.hpp"
 #include "component/scheduler.hpp"
@@ -29,7 +30,7 @@ namespace vr::gameplay::interaction::native
 		bool controlling{}; // Native server use pass only, including its final release.
 		thread_local const ray* querying{};
 		thread_local const target* forced{};
-		thread_local std::array<entry,4000> candidates{};
+		thread_local lazy_array<entry,4000> candidates_storage{};
 		thread_local std::array<unsigned short,16> breach_candidates{};
 		thread_local unsigned breach_count{};
 		thread_local unsigned surface_trace_budget{};
@@ -295,6 +296,7 @@ namespace vr::gameplay::interaction::native
 		surface_trace_budget=64;
 		const auto proxies=scripted_use::sample(aim);
 		breach_count=0;
+		auto& candidates = candidates_storage.get();
 		const auto count=list_hook.invoke<int>(&game::g_entities[0],candidates.data(),3999);
 		if (count<0 || count>int(candidates.size())) {reason="native candidate count rejected";return {};}
 		if (diagnostic) {diagnostic->aim=aim;diagnostic->native_count=count;}

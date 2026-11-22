@@ -1,6 +1,7 @@
 init()
 {
     // Own only these five mixes. Also retire leftovers on a new script VM.
+    ensure_cache();
     release();
     level.killfeed_duck_running = false;
     level.killfeed_duck_until = 0;
@@ -29,6 +30,29 @@ recover_duck()
 
 activate()
 {
+    ensure_cache();
+    release();
+    names = level.killfeed_duck_names;
+    batches = level.killfeed_duck_batches;
+    for ( index = 0; index < batches.size; index++ )
+        addsubmix( names[index], 0.01, 1.0, batches[index] );
+    return level.killfeed_duck_count;
+}
+
+ensure_cache()
+{
+    if ( isdefined( level.killfeed_duck_names ) && isdefined( level.killfeed_duck_batches ) )
+        return;
+
+    // Fixed script strings identify exactly the same mixes at add and clear.
+    names = [];
+    names[0] = "killfeed_feedback_duck_0";
+    names[1] = "killfeed_feedback_duck_1";
+    names[2] = "killfeed_feedback_duck_2";
+    names[3] = "killfeed_feedback_duck_3";
+    names[4] = "killfeed_feedback_duck_4";
+    level.killfeed_duck_names = names;
+
     volmods = [];
     // Slightly deepen combat ducking for every preset; never compound activations.
     volmods = add_volmod( volmods, "wpn_foley_plr", 0.50 );
@@ -84,36 +108,15 @@ activate()
     // Music shares the same deadline and recovery as combat audio.
     volmods = add_volmod( volmods, "music", 0.60 );
 
-    return submit_volmods( volmods );
-}
-
-submix_names()
-{
-    // Fixed script strings identify exactly the same mixes at add and clear.
-    names = [];
-    names[0] = "killfeed_feedback_duck_0";
-    names[1] = "killfeed_feedback_duck_1";
-    names[2] = "killfeed_feedback_duck_2";
-    names[3] = "killfeed_feedback_duck_3";
-    names[4] = "killfeed_feedback_duck_4";
-    return names;
-}
-
-release()
-{
-    names = submix_names();
-    for ( index = 0; index < names.size; index++ )
-        clearsubmix( names[index], 0.18 );
-}
-
-submit_volmods( volmods )
-{
-    names = submix_names();
     // H2 accepts ten name/value pairs per call. Keep all batches in our slots.
+    batches = [];
     if ( volmods.size == 0 || volmods.size % 2 != 0 || volmods.size > names.size * 20 )
-        return 0;
+    {
+        level.killfeed_duck_batches = batches;
+        level.killfeed_duck_count = 0;
+        return;
+    }
 
-    release();
     batch = [];
     batch_index = 0;
     for ( index = 0; index < volmods.size; index += 2 )
@@ -121,12 +124,21 @@ submit_volmods( volmods )
         batch = add_volmod( batch, volmods[index], volmods[index + 1] );
         if ( batch.size == 20 || index + 2 == volmods.size )
         {
-            addsubmix( names[batch_index], 0.01, 1.0, batch );
+            batches[batch_index] = batch;
             batch_index++;
             batch = [];
         }
     }
-    return volmods.size / 2;
+    level.killfeed_duck_batches = batches;
+    level.killfeed_duck_count = volmods.size / 2;
+}
+
+release()
+{
+    ensure_cache();
+    names = level.killfeed_duck_names;
+    for ( index = 0; index < names.size; index++ )
+        clearsubmix( names[index], 0.18 );
 }
 
 add_volmod( volmods, name, amount )

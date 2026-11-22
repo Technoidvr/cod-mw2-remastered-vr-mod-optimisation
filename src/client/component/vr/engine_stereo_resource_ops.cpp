@@ -6,6 +6,7 @@
 #include "utils/hook_validation.hpp"
 
 #include <atomic>
+#include <intrin.h>
 #include <mutex>
 
 namespace vr::engine_stereo_resource_ops
@@ -52,6 +53,9 @@ namespace vr::engine_stereo_resource_ops
 		std::array<std::atomic_uintptr_t, api_count> hook_targets{};
 		std::array<std::atomic_uint64_t, api_count> calls{};
 		std::array<std::atomic<observer_fn>, observer_channel_count> observers{};
+		std::mutex observer_registration_mutex;
+		std::atomic_uint32_t active_observer_mask{};
+		static_assert(observer_channel_count <= 32);
 		std::atomic<resource_rewriter_fn> resource_rewriter{};
 		std::atomic<shader_resource_rewriter_fn> shader_resource_rewriter{};
 		std::atomic<unordered_access_rewriter_fn> unordered_access_rewriter{};
@@ -71,9 +75,12 @@ namespace vr::engine_stereo_resource_ops
 				return;
 			}
 			calls[index(value.operation)].fetch_add(1, std::memory_order_relaxed);
-			for (auto& registered : observers)
+			auto mask = active_observer_mask.load(std::memory_order_acquire);
+			unsigned long slot{};
+			while (_BitScanForward(&slot, mask))
 			{
-				if (const auto callback = registered.load(std::memory_order_acquire))
+				mask &= mask - 1u;
+				if (const auto callback = observers[slot].load(std::memory_order_acquire))
 				{
 					observer_callbacks.fetch_add(1, std::memory_order_relaxed);
 					callback(value);
@@ -347,7 +354,11 @@ namespace vr::engine_stereo_resource_ops
 	{
 		const auto slot = static_cast<std::size_t>(channel);
 		if (slot >= observers.size()) return;
+		const std::lock_guard lock(observer_registration_mutex);
 		observers[slot].store(value, std::memory_order_release);
+		const auto bit = 1u << slot;
+		if (value != nullptr) active_observer_mask.fetch_or(bit, std::memory_order_release);
+		else active_observer_mask.fetch_and(~bit, std::memory_order_release);
 	}
 
 	void set_rewriters(const resource_rewriter_fn resource,

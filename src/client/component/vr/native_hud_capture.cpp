@@ -1,5 +1,6 @@
 #include <std_include.hpp>
 #include "texture_extent.hpp"
+#include "lazy_storage.hpp"
 #include "gameplay/fixed_sniper.hpp"
 #include "gameplay/javelin_screen.hpp"
 #include "diagnostics/screen_display.hpp"
@@ -100,7 +101,7 @@ namespace vr::native_hud_capture
 			UINT staging_width{}, staging_height{};
 		};
 		thread_local resources gpu;
-		thread_local std::array<std::array<const void*,1024>,remote_hud::frame_count> remote_selections{};
+		thread_local lazy_array<std::array<const void*,1024>,remote_hud::frame_count> remote_selections_storage{};
 		struct scope
 		{
 			unsigned menu_index{menu_surface::surface_count};
@@ -146,13 +147,14 @@ namespace vr::native_hud_capture
 			std::array<scope,menu_surface::surface_count> scopes;
 			bool open{};
 		};
-		thread_local menu_pass global_ui_pass;
+		thread_local lazy_box<menu_pass> global_ui_pass_storage{};
 		thread_local std::array<scope,remote_hud::layer_count> global_remote;
 		thread_local std::uint64_t global_remote_epoch{},global_remote_reference{};
 		thread_local bool global_remote_valid{};
 		bool select_remote(const void*,std::span<scope,remote_hud::layer_count>,std::span<const native_menu::range>);
 		void prepare_remote(std::span<scope,remote_hud::layer_count> layers,unsigned stream,scope* tail)
 		{
+			auto& remote_selections = remote_selections_storage.get();
 			for(unsigned i=0;i<layers.size();++i)
 			{
 				auto& layer=layers[i];layer.is_remote=true;layer.remote_stream=remote_hud::index(stream,remote_hud::layer(i));
@@ -220,7 +222,8 @@ namespace vr::native_hud_capture
 		void global_ui_begin(void* commands) noexcept
 		{
 			++global_ui_dispatches;
-			if(!alive||active||global_ui_pass.open)return;
+			if(!alive||active)return;
+			if(const auto* existing = global_ui_pass_storage.get_if(); existing && existing->open)return;
 			try
 			{
 				const auto plan=native_menu::for_stream(reinterpret_cast<std::uintptr_t>(commands));
@@ -236,14 +239,17 @@ namespace vr::native_hud_capture
 				global_remote_valid=remote_epoch && select_remote(commands,global_remote,
 					plan?std::span<const native_menu::range>(plan->ranges):std::span<const native_menu::range>{});
 				if(!global_remote_valid)for(auto& layer:global_remote){layer.failed=true;layer.count=0;}
+				auto& global_ui_pass = global_ui_pass_storage.get();
 				global_ui_pass.plan=plan;if(plan)prepare_menu_scopes(global_ui_pass,graphics,&global_remote[0]);
 				global_ui_pass.open=true;active=plan?&global_ui_pass.scopes[0]:&global_remote[0];
 			}
-			catch(...){++global_ui_failures;global_ui_pass={};}
+			catch(...){++global_ui_failures;global_ui_pass_storage.zero_if_allocated();}
 		}
 		void global_ui_end(void*) noexcept
 		{
-			if(!global_ui_pass.open)return;
+			auto* const pass_ptr = global_ui_pass_storage.get_if();
+			if(!pass_ptr || !pass_ptr->open)return;
+			auto& global_ui_pass = *pass_ptr;
 			active=nullptr;
 			try
 			{

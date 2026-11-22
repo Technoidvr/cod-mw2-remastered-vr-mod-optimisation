@@ -465,10 +465,10 @@ inline void expect_native_game_view()
 		std::memcpy(axis,native_clip.data(),sizeof(axis));origin[0]=140;origin[1]=180;origin[2]=380;
 		require(apply_camera(origin, axis, 2250, constrained, vr::game_view::camera_request{vr::game_view::camera_profiles::free, 701, 802}) && close(heading(axis),before_recenter),
 			"recenter during climbing preserves world heading and does not borrow the native clamp");
-		const auto exit_heading=heading(axis);float exit_command[]{0,0,0};
-		require(apply_game_view(exit_command,no_delta) && close(exit_command[1],exit_heading),"native unlink hands free-look heading back to normal input");
+		const auto climb_exit_heading=heading(axis);float exit_command[]{0,0,0};
+		require(apply_game_view(exit_command,no_delta) && close(exit_command[1],climb_exit_heading),"native unlink hands free-look heading back to normal input");
 		record_game_command(2300,0,true);native_axis(exit_command[1],axis);
-		require(apply_camera(origin,axis,2300,exit_command) && close(heading(axis),exit_heading),"early camera exit does not double HMD yaw");
+		require(apply_camera(origin,axis,2300,exit_command) && close(heading(axis),climb_exit_heading),"early camera exit does not double HMD yaw");
 	}
 	{
 		reset();configure_target(true);set_enabled(true);set_world_scale(40);
@@ -617,14 +617,14 @@ inline void expect_native_game_view()
 		auto policy=vr::game_view::camera_profiles::authored_yaw_roll;policy.translation=vr::game_view::head_translation::fixed;
 		const vr::game_view::camera_request shot{policy,920,921,920};
 		vr::game_view::scripted_rotation_reference authored{921,full_axis(70,45,30)};
-		const auto expected=full_axis(0,45,30);float native_view[]{70,180,80};
+		const auto yaw_roll_expected=full_axis(0,45,30);float native_view[]{70,180,80};
 		for(int stage=0;stage<2;++stage)
 		{
 			authored.axis=full_axis(stage?-40.f:70.f,45,30);
 			native_axis(180,axis);origin[0]=100;origin[1]=200;origin[2]=300;
 			require(apply_camera(origin,axis,9100+stage*10,native_view,shot,&authored),"yaw/roll camera composes through the real head bridge");
 			for(unsigned row=0;row<3;++row)for(unsigned col=0;col<3;++col)
-				require(close(axis[row][col],expected[row][col]),"native pitch is absent both on entry and during later animation");
+				require(close(axis[row][col],yaw_roll_expected[row][col]),"native pitch is absent both on entry and during later animation");
 			require(close(origin[0],100)&&close(origin[1],200)&&close(origin[2],300),"pitch exclusion retains exact native rope position");
 		}
 	}
@@ -640,11 +640,11 @@ inline void expect_native_game_view()
 		require(apply_game_view(remote_angles,remote_delta,42,true) && close(remote_angles[1],55),
 			"remote input bridge passes relative head yaw through native command angles");
 		record_game_command(9200,0,false);
-		const auto expected=full_axis(-60,55,0);std::memcpy(axis,expected.data(),sizeof(axis));
+		const auto remote_expected=full_axis(-60,55,0);std::memcpy(axis,remote_expected.data(),sizeof(axis));
 		origin[0]=100;origin[1]=200;origin[2]=300;
 		require(apply_camera(origin,axis,9200,remote_angles,request) && close(origin[2],300),"remote render bridge retains the native camera position");
 		for(unsigned row=0;row<3;++row)for(unsigned col=0;col<3;++col)
-			require(close(axis[row][col],expected[row][col]),"native UAV pitch survives and consumed head yaw is not doubled");
+			require(close(axis[row][col],remote_expected[row][col]),"native UAV pitch survives and consumed head yaw is not doubled");
 		float restored[]{0,11,0};
 		require(apply_game_view(restored,remote_delta) && close(restored[1],11),
 			"UAV exit keeps native restored player facing instead of inheriting the missile heading");

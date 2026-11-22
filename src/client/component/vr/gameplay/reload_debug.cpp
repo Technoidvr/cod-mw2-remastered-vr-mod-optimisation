@@ -6,6 +6,7 @@
 #include "weapon_render_pose.hpp"
 #include "../eye_composition.hpp"
 #include "../debug_options.hpp"
+#include "../lazy_storage.hpp"
 #include "../spatial_lines_renderer.hpp"
 #include "component/command.hpp"
 #include "component/console.hpp"
@@ -62,7 +63,7 @@ namespace vr::gameplay::weapons::physical_reload::debug
 			std::uint64_t id{}, device{};
 			std::array<overlay, 4> layers{};
 		};
-		thread_local eye_pair pair;
+		thread_local lazy_box<eye_pair> pair_storage{};
 		thread_local spatial_lines::renderer renderer;
 		template <class Sample, size_t Capacity, class Geometry>
 		void prepare(channel<Sample, Capacity>& source,
@@ -145,6 +146,12 @@ namespace vr::gameplay::weapons::physical_reload::debug
 		{
 			if (event.eye > 1)
 				return;
+			if (event.eye == 0 && !pair_storage.allocated() &&
+			    !well.enabled() && !slap.enabled() && !bolt.enabled() && !cover.enabled())
+				return;
+			if (event.eye != 0 && !pair_storage.allocated())
+				return;
+			auto& pair = pair_storage.get();
 			if (event.eye == 0)
 			{
 				pair.id = event.pair_id;

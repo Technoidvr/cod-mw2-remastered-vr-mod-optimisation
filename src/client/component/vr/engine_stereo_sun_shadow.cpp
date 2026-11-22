@@ -20,6 +20,9 @@ namespace vr::engine_stereo_sun_shadow
 		std::atomic<ID3D11DeviceContext*> owner_context{};
 		std::atomic_bool changed{};
 		std::atomic_bool binding_uncertain{};
+		std::atomic_bool draw_observer_armed{};
+		std::atomic<ID3D11DepthStencilView*> last_matching_dsv{};
+		std::atomic<ID3D11DepthStencilView*> last_non_matching_dsv{};
 		thread_local bool producing_left{};
 		std::atomic_uint64_t left_count{}, skipped{}, refused{}, dirty_count{}, saved{};
 		template<class T> T read(const void* data, std::size_t offset) noexcept
@@ -31,9 +34,27 @@ namespace vr::engine_stereo_sun_shadow
 			if (producing_left) return;
 			if (resource && resource == watched.load(std::memory_order_acquire)) changed.store(true, std::memory_order_release);
 		}
+		bool dsv_matches_watched(ID3D11DepthStencilView* view, ID3D11Resource* target) noexcept
+		{
+			if (!view || !target) return false;
+			if (view == last_matching_dsv.load(std::memory_order_relaxed)) return true;
+			if (view == last_non_matching_dsv.load(std::memory_order_relaxed)) return false;
+			Microsoft::WRL::ComPtr<ID3D11Resource> resource;
+			view->GetResource(&resource);
+			if (resource.Get() == target)
+			{
+				last_matching_dsv.store(view, std::memory_order_relaxed);
+				return true;
+			}
+			last_non_matching_dsv.store(view, std::memory_order_relaxed);
+			return false;
+		}
 		void write_view(ID3D11View* view) noexcept
 		{
-			if (!view || !watched.load(std::memory_order_acquire)) return;
+			auto* const target = watched.load(std::memory_order_acquire);
+			if (!view || !target) return;
+			if (view == last_matching_dsv.load(std::memory_order_relaxed)) { write(target); return; }
+			if (view == last_non_matching_dsv.load(std::memory_order_relaxed)) return;
 			Microsoft::WRL::ComPtr<ID3D11Resource> resource; view->GetResource(&resource); write(resource.Get());
 		}
 		void resource_operation(const engine_stereo_resource_ops::event& event) noexcept
@@ -46,18 +67,11 @@ namespace vr::engine_stereo_sun_shadow
 		void clear_depth(ID3D11DeviceContext*, ID3D11DepthStencilView* view, std::uint32_t,
 			std::uintptr_t, std::uint32_t, std::uintptr_t, std::uint64_t) noexcept { write_view(view); }
 		void invocation(ID3D11DeviceContext* context, engine_stereo_execution::api operation, std::uintptr_t,
-			std::uint32_t, std::uintptr_t, std::uint64_t, std::uint8_t, const std::array<std::uint64_t, 6>& args) noexcept
+			std::uint32_t, std::uintptr_t, std::uint64_t, std::uint8_t, const std::array<std::uint64_t, 6>&) noexcept
 		{
 			if (!watched.load(std::memory_order_acquire) || producing_left) return;
 			using api = engine_stereo_execution::api;
-			if (operation == api::execute_command_list)
-			{
-				// The production conversion owner marks only private, state-restoring
-				// lists. Arbitrary native/foreign lists invalidate the provenance.
-				if (!args[1] || !native_conversion_command_list::is_marked(reinterpret_cast<ID3D11CommandList*>(args[0]))) changed = true;
-				else binding_uncertain = true; // driver replay may update the binding observer before RestoreState
-				return;
-			}
+			if (operation == api::execute_command_list) return;
 			if (engine_stereo_execution::in_known_conversion(context)) return;
 			if (operation == api::dispatch || operation == api::dispatch_indirect) return; // admitted depth resource has no UAV bind
 			if (context != owner_context.load(std::memory_order_acquire)) { changed = true; return; }
@@ -70,6 +84,35 @@ namespace vr::engine_stereo_sun_shadow
 			const auto binding = engine_stereo_output_merger::get_current_binding(context);
 			if (!binding.valid) { changed = true; return; }
 			write_view(reinterpret_cast<ID3D11DepthStencilView*>(binding.depth_stencil));
+		}
+		void set_draw_observer_armed(const bool armed) noexcept
+		{
+			if (draw_observer_armed.exchange(armed, std::memory_order_acq_rel) == armed) return;
+			engine_stereo_execution::set_invocation_observer(
+				engine_stereo_execution::invocation_observer_channel::sun_reuse,
+				armed ? invocation : nullptr);
+		}
+		void on_depth_bind(ID3D11DeviceContext* context, ID3D11DepthStencilView* depth) noexcept
+		{
+			auto* const target = watched.load(std::memory_order_acquire);
+			if (!target) return;
+			if (context != owner_context.load(std::memory_order_acquire)) return;
+			if (engine_stereo_execution::in_known_conversion(context)) return;
+			const bool matches = dsv_matches_watched(depth, target);
+			binding_uncertain.store(false, std::memory_order_release);
+			set_draw_observer_armed(matches);
+		}
+		void on_execute_command_list(ID3D11DeviceContext*, ID3D11CommandList* commands, const bool restore_state) noexcept
+		{
+			if (!watched.load(std::memory_order_acquire) || producing_left) return;
+			if (!restore_state || !native_conversion_command_list::is_marked(commands))
+			{
+				changed.store(true, std::memory_order_release);
+				return;
+			}
+			// Driver replay may update the binding observer before RestoreContextState restores the DSV.
+			binding_uncertain.store(true, std::memory_order_release);
+			set_draw_observer_armed(true);
 		}
 		void invoke(void* data, void* record)
 		{
@@ -107,16 +150,37 @@ namespace vr::engine_stereo_sun_shadow
 	void watch(ID3D11Resource* resource, ID3D11DeviceContext* context) noexcept
 	{
 		unwatch(); changed = false; binding_uncertain = false; owner_context = context; producing_left = true;
-		engine_stereo_execution::set_invocation_observer(engine_stereo_execution::invocation_observer_channel::sun_reuse, invocation);
+		last_matching_dsv.store(nullptr, std::memory_order_relaxed);
+		last_non_matching_dsv.store(nullptr, std::memory_order_relaxed);
 		engine_stereo_resource_ops::set_observer(engine_stereo_resource_ops::observer_channel::sun_reuse, resource_operation);
 		engine_stereo_output_merger::set_clear_observers(engine_stereo_output_merger::clear_observer_channel::sun_reuse, clear_color, clear_depth);
+		engine_stereo_output_merger::set_depth_bind_observer(on_depth_bind);
+		engine_stereo_execution::set_execute_command_list_observer(on_execute_command_list);
 		watched.store(resource, std::memory_order_release);
+		if (context != nullptr)
+		{
+			const auto binding = engine_stereo_output_merger::get_current_binding(context);
+			if (binding.valid)
+			{
+				on_depth_bind(context, reinterpret_cast<ID3D11DepthStencilView*>(binding.depth_stencil));
+			}
+			else
+			{
+				Microsoft::WRL::ComPtr<ID3D11DepthStencilView> depth;
+				context->OMGetRenderTargets(0, nullptr, &depth);
+				on_depth_bind(context, depth.Get());
+			}
+		}
 	}
 	void unwatch() noexcept
 	{
 		producing_left = false;
+		last_matching_dsv.store(nullptr, std::memory_order_relaxed);
+		last_non_matching_dsv.store(nullptr, std::memory_order_relaxed);
 		if (!watched.exchange(nullptr, std::memory_order_acq_rel)) return;
-		engine_stereo_execution::set_invocation_observer(engine_stereo_execution::invocation_observer_channel::sun_reuse, nullptr);
+		set_draw_observer_armed(false);
+		engine_stereo_execution::set_execute_command_list_observer(nullptr);
+		engine_stereo_output_merger::set_depth_bind_observer(nullptr);
 		engine_stereo_resource_ops::set_observer(engine_stereo_resource_ops::observer_channel::sun_reuse, nullptr);
 		engine_stereo_output_merger::set_clear_observers(engine_stereo_output_merger::clear_observer_channel::sun_reuse, nullptr, nullptr);
 	}

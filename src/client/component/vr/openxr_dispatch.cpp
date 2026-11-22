@@ -106,6 +106,15 @@ namespace vr::openxr
 		H2V_LOAD_XR(apply_haptic_feedback, "xrApplyHapticFeedback");
 
 #undef H2V_LOAD_XR
+		{
+			PFN_xrVoidFunction fn{};
+			if (XR_SUCCEEDED(get_instance_proc_addr(instance, "xrPerfSettingsSetPerformanceLevelEXT", &fn)) &&
+			    fn != nullptr)
+			{
+				perf_settings_set_performance_level =
+				    reinterpret_cast<PFN_xrPerfSettingsSetPerformanceLevelEXT>(fn);
+			}
+		}
 		return true;
 	}
 

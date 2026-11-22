@@ -468,8 +468,11 @@ namespace vr::gameplay::weapons::physical_reload
 					release.event,10,0,1,true,true,hi::object(hi::domain::carry,entry.id,1)});
 				continue;
 			}
-			float part=g.slide_distance/p.slide_radius;
-			if(attached_magazine_radius(p)>0 && valid(g.magazine) && view.ammo.magazine_inserted)
+			const bool slide_eligible=(!g.knife_held || p.knife_slide_pose_count) &&
+				(!p.manual_bolt || rotating_bolt::permits(*p.manual_bolt,actor)) &&
+				g.slide_pose<(g.knife_held?p.knife_slide_pose_count:p.slide_pose_count);
+			float part=slide_eligible?(g.slide_distance/p.slide_radius):INFINITY;
+			if(attached_magazine_radius(p)>0 && valid(g.magazine) && view.ammo.magazine_inserted && g.attached_magazine_pose<p.magazine_pose_count)
 				part=std::min(part,g.magazine.grip_distance/attached_magazine_radius(p));
 			if(p.belt && belt_feed::preferred(*p.belt,view.ammo.belt,view.ammo.magazine_inserted,view.ammo.magazine_rounds,g.belt,g.slide_distance,g.magazine.grip_distance))part=0;
 			const bool supply=part>1 && g.waist_distance<=p.waist_radius;

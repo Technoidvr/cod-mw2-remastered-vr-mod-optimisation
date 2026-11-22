@@ -7,6 +7,7 @@
 #include "weapon_render_pose.hpp"
 #include "weapon_render_owner.hpp"
 #include "../eye_composition.hpp"
+#include "../lazy_storage.hpp"
 #include "component/scene_pose_match.hpp"
 #include "component/fastfiles.hpp"
 #include "component/scheduler.hpp"
@@ -35,7 +36,7 @@ namespace vr::gameplay::weapons::chambering_guide
 			size_t count{};
 			bool left_drawn{};
 		};
-		thread_local eye_pair pair;
+		thread_local lazy_box<eye_pair> pair_storage{};
 		thread_local opaque_mesh::renderer renderer;
 		std::atomic_uint64_t pairs{}, draws{}, misses{}, failures{};
 		bool current(const sample& s) noexcept
@@ -66,6 +67,12 @@ namespace vr::gameplay::weapons::chambering_guide
 		{
 			if (!alive.load() || event.eye > 1)
 				return;
+			if (event.eye == 0 && !pair_storage.allocated() &&
+			    (!enabled() || !event.model_origins.valid))
+				return;
+			if (event.eye != 0 && !pair_storage.allocated())
+				return;
+			auto& pair = pair_storage.get();
 			if (event.eye == 0)
 			{
 				pair = {};

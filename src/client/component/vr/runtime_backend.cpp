@@ -222,6 +222,10 @@ namespace vr
 			const wait_timing::scoped_lock lock(mutex_, wait_timing::site::dispatch_enabled);
 			return choice_.valid && visit([&](auto& backend) { return backend.applied_enabled(); });
 		}
+		bool is_session_running() const noexcept
+		{
+			return choice_.valid && visit([&](const auto& backend) { return backend.is_session_running(); });
+		}
 		bool requires_present_owner_execution() const noexcept
 		{
 			return true;
@@ -334,6 +338,10 @@ namespace vr
 	{
 		const wait_timing::scoped_lock lock(mutex_, wait_timing::site::facade_enabled);
 		return implementation_->applied_enabled();
+	}
+	bool runtime_backend::is_session_running() const noexcept
+	{
+		return implementation_->is_session_running();
 	}
 	bool runtime_backend::requires_present_owner_execution() const noexcept
 	{

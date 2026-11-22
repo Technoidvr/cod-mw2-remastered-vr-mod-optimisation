@@ -150,5 +150,6 @@ namespace vr::head_pose_bridge
 		const game_view::scripted_rotation_reference* rotation_reference = nullptr,
 		body_pose::mode equipment_mode = body_pose::mode::inferred) noexcept;
 	[[nodiscard]] bool camera_was_applied() noexcept;
+	[[nodiscard]] bool consume_roomscale_follow(bool stick_active, float& forward_move, float& right_move) noexcept;
 	[[nodiscard]] status get_status() noexcept;
 }

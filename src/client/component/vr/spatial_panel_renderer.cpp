@@ -67,11 +67,12 @@ float4 screen_ps(Vertex v) : SV_Target {
     // before native source-over, then return to the linear eye target once.
     float3 bg = to_encoded(scene.Sample(linear_clamp, v.uv));
     if (blur_alpha > 0) {
-        float3 blurred = 0;
-        [unroll] for (int y=-1; y<=1; ++y)
-            [unroll] for (int x=-1; x<=1; ++x)
-                blurred += scene.Sample(linear_clamp,v.uv+float2(x,y)*settings.xy*radius)
-                    * (x==0 ? 2 : 1) * (y==0 ? 2 : 1) / 16.0;
+        float2 offset = settings.xy * (0.5 * radius);
+        float3 blurred = (
+            scene.Sample(linear_clamp, v.uv + float2(-offset.x, -offset.y)) +
+            scene.Sample(linear_clamp, v.uv + float2( offset.x, -offset.y)) +
+            scene.Sample(linear_clamp, v.uv + float2(-offset.x,  offset.y)) +
+            scene.Sample(linear_clamp, v.uv + float2( offset.x,  offset.y))) * 0.25;
         bg = lerp(bg,to_encoded(blurred),blur_alpha);
     }
     // Native tutorial borders precede their text and use reverse subtraction.
@@ -92,13 +93,14 @@ float4 ps(Vertex v) : SV_Target {
     float3 original = scene.Sample(linear_clamp, uv);
     float3 background = original;
     if (coverage > 0) {
-        // Bounded 3x3 tent kernel, only over the projected panel's pixels.
+        // Bilinear 4-tap tent kernel, only over the projected panel's pixels.
         // Sample the current EYE's display image, never a desktop/other-eye copy.
-        float3 blurred = 0;
-        [unroll] for (int y = -1; y <= 1; ++y)
-            [unroll] for (int x = -1; x <= 1; ++x)
-                blurred += scene.Sample(linear_clamp, uv + float2(x,y)*settings.xy*settings.z)
-                    * (x == 0 ? 2 : 1) * (y == 0 ? 2 : 1) / 16.0;
+        float2 offset = settings.xy * (0.5 * settings.z);
+        float3 blurred = (
+            scene.Sample(linear_clamp, uv + float2(-offset.x, -offset.y)) +
+            scene.Sample(linear_clamp, uv + float2( offset.x, -offset.y)) +
+            scene.Sample(linear_clamp, uv + float2(-offset.x,  offset.y)) +
+            scene.Sample(linear_clamp, uv + float2( offset.x,  offset.y))) * 0.25;
         // A native mask is independent of glyph/border ink: the clear area
         // behind the ammo counter still receives its authored background blur.
         background = lerp(original, blurred, coverage);
@@ -113,16 +115,14 @@ float4 mask_ps(Vertex v) : SV_Target {
     if (coverage <= 0) discard;
     float2 uv = v.position.xy*settings.xy;
     float3 original = scene.SampleLevel(linear_clamp,uv,0), blurred = 0;
-    // Five-tap binomial weights per axis: smoother low-frequency backing
-    // without the separated sharp copies produced by a wide 3x3 kernel.
-    static const float weights[5] = {1,4,6,4,1};
-    // Prefilter each tap's footprint before widening the kernel. Sparse
-    // full-resolution taps alone preserve/alias fine detail at even radii.
+    // Mip-prefiltered 3x3 binomial weights per axis: smooth low-frequency
+    // backing with 9 taps instead of 25 full-width fetches.
+    static const float weights[3] = {1,2,1};
     float lod = max(0,log2(max(settings.z,1)));
-    [unroll] for (int y=-2;y<=2;++y)
-        [unroll] for (int x=-2;x<=2;++x)
+    [unroll] for (int y=-1;y<=1;++y)
+        [unroll] for (int x=-1;x<=1;++x)
             blurred += scene.SampleLevel(linear_clamp,uv+float2(x,y)*settings.xy*settings.z,lod)
-                * weights[x+2] * weights[y+2] / 256.0;
+                * weights[x+1] * weights[y+1] / 16.0;
     return float4(lerp(original,blurred,coverage),1);
 }
 float4 optic_ps(Vertex v) : SV_Target {

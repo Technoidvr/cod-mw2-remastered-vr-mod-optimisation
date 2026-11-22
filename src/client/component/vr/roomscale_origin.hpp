@@ -51,6 +51,19 @@ namespace vr::game_view
 		}
 	public:
 		void reset() noexcept { *this = {}; }
+		void shift_offset(vec delta) noexcept
+		{
+			if (!count_ || !bounded(delta)) return;
+			const auto candidate = pose_filter::add(latest_.offset, delta);
+			if (!bounded(candidate)) return;
+			latest_.offset = candidate;
+			for (std::size_t i = 0; i < count_; ++i)
+			{
+				auto& saved = history_[i];
+				const auto shifted = pose_filter::add(saved.offset, delta);
+				if (bounded(shifted)) saved.offset = shifted;
+			}
+		}
 		void record(int time) noexcept
 		{
 			// Command construction distinguishes a load from rendering an older

@@ -652,6 +652,11 @@ namespace vr::openvr
 			return status_.applied_enabled;
 		}
 
+		bool is_session_running() const noexcept
+		{
+			return session_running_atomic_.load(std::memory_order_acquire);
+		}
+
 		runtime_status get_status() const
 		{
 			runtime_status result;
@@ -794,6 +799,8 @@ namespace vr::openvr
 			status_.present_owner_transaction_thread_id = present_transaction_.thread_id;
 			const std::lock_guard lock(status_mutex_);
 			status_snapshot_ = status_;
+			session_running_atomic_.store(status_.applied_enabled && status_.session_running,
+				std::memory_order_release);
 		}
 
 		bool fail(const runtime_state state, const std::string& operation, const std::int64_t result,
@@ -2223,6 +2230,7 @@ namespace vr::openvr
 		bool auto_initialize_allowed_{true};
 		std::uint64_t initialization_device_generation_{};
 		std::atomic_uint64_t resize_pending_generation_{};
+		std::atomic_bool session_running_atomic_{};
 	};
 
 	runtime_backend::runtime_backend() : implementation_(std::make_unique<implementation>()) {}
@@ -2254,5 +2262,6 @@ namespace vr::openvr
 	bool runtime_backend::shutdown_complete() const noexcept { return implementation_->shutdown_complete(); }
 	bool runtime_backend::requested_enabled() const { return implementation_->requested_enabled(); }
 	bool runtime_backend::applied_enabled() const { return implementation_->applied_enabled(); }
+	bool runtime_backend::is_session_running() const noexcept { return implementation_->is_session_running(); }
 	runtime_status runtime_backend::get_status() const { return implementation_->get_status(); }
 }

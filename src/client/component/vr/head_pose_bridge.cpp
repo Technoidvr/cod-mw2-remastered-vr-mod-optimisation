@@ -42,6 +42,12 @@ namespace vr::head_pose_bridge
 		std::uint64_t filter_epoch{};
 		vector3 local_position_units{};
 		vector3 roomscale_offset_meters{};
+		bool has_last_ordinary_origin{};
+		vector3 last_ordinary_origin{};
+		vector3 last_head_world_offset_meters{};
+		bool roomscale_follow_armed{};
+		bool roomscale_follow_stick_active{};
+		std::chrono::steady_clock::time_point roomscale_follow_at{};
 		matrix3 local_orientation{identity_matrix};
 		std::chrono::steady_clock::time_point pose_sampled_at{};
 		game_view::state game_view_state;
@@ -291,6 +297,11 @@ namespace vr::head_pose_bridge
 			pose_available = false;
 			camera_applied = false;
 			local_position_units = {};
+			has_last_ordinary_origin = false;
+			last_ordinary_origin = {};
+			last_head_world_offset_meters = {};
+			roomscale_follow_armed = false;
+			roomscale_follow_stick_active = false;
 			local_orientation = identity_matrix;
 			local_roll_degrees = 0.0f;
 		}
@@ -449,6 +460,11 @@ namespace vr::head_pose_bridge
 		game_view_state = {};remote_view_state={};
 		roomscale.reset();
 		roomscale_offset_meters = {};
+		has_last_ordinary_origin = false;
+		last_ordinary_origin = {};
+		last_head_world_offset_meters = {};
+		roomscale_follow_armed = false;
+		roomscale_follow_stick_active = false;
 		scripted_camera = {};
 		absolute_angles = local_angles = {};
 		local_heading = {};
@@ -495,6 +511,11 @@ namespace vr::head_pose_bridge
 		game_view_state={};remote_view_state={};scripted_camera={};camera_frame_available=false;camera_applied=false;
 		roomscale.reset();
 		roomscale_offset_meters = {};
+		has_last_ordinary_origin = false;
+		last_ordinary_origin = {};
+		last_head_world_offset_meters = {};
+		roomscale_follow_armed = false;
+		roomscale_follow_stick_active = false;
 		body_estimator.reset();
 	}
 
@@ -615,11 +636,72 @@ namespace vr::head_pose_bridge
 		vector3 turn_offset_meters{};
 		const bool ordinary = request.policy == game_view::camera_profiles::gameplay &&
 			!request.epoch && !request.position_epoch && !request.entry_epoch;
-		if (!ordinary) roomscale.reset();
+		if (!ordinary)
+		{
+			roomscale.reset();
+			has_last_ordinary_origin = false;
+			last_ordinary_origin = {};
+			last_head_world_offset_meters = {};
+			roomscale_follow_armed = false;
+		}
 		else if (!roomscale.offset(command_time, recenter_count, base_yaw_axis, head_meters, turn_offset_meters,command_resolved))
 		{
 			camera_applied = false;camera_frame_available = false;
 			++composition_failure_count;return false;
+		}
+		vector3 rotated_head_meters{};
+		for (unsigned world_axis = 0; world_axis < 3; ++world_axis)
+			for (unsigned i = 0; i < 3; ++i)
+				rotated_head_meters[world_axis] += composed.head_offset[i] * base_yaw_axis[i][world_axis];
+		if (ordinary)
+		{
+			const auto now = std::chrono::steady_clock::now();
+			if (roomscale_follow_armed && has_last_ordinary_origin && world_scale > 0.0f &&
+				now >= roomscale_follow_at &&
+				now - roomscale_follow_at <= std::chrono::milliseconds(150))
+			{
+				const float ex = turn_offset_meters[0] + rotated_head_meters[0];
+				const float ey = turn_offset_meters[1] + rotated_head_meters[1];
+				const float err_dist = std::hypot(ex, ey);
+				const float dx = (original_origin[0] - last_ordinary_origin[0]) / world_scale;
+				const float dy = (original_origin[1] - last_ordinary_origin[1]) / world_scale;
+				const float step_dist = std::hypot(dx, dy);
+				if (std::isfinite(err_dist) && std::isfinite(step_dist) &&
+					err_dist > 0.02f && step_dist > 1e-5f && step_dist < 0.50f)
+				{
+					const float dot_step = dx * ex + dy * ey;
+					float absorb{};
+					if (!roomscale_follow_stick_active)
+					{
+						if (dot_step > 0.0f)
+							absorb = std::min(err_dist, dot_step / err_dist);
+					}
+					else if (err_dist > 0.06f)
+					{
+						const float positive_along = dot_step > 0.0f ? (dot_step / err_dist) : 0.0f;
+						absorb = std::min(err_dist - 0.05f,
+							std::max(positive_along * 0.5f, std::min(0.018f, step_dist * 0.45f)));
+					}
+					if (absorb > 1e-5f)
+					{
+						const vector3 shift{
+							-absorb * (ex / err_dist),
+							-absorb * (ey / err_dist),
+							0.0f,
+						};
+						roomscale.shift_offset(shift);
+						turn_offset_meters[0] += shift[0];
+						turn_offset_meters[1] += shift[1];
+					}
+				}
+			}
+			last_ordinary_origin = original_origin;
+			has_last_ordinary_origin = true;
+			last_head_world_offset_meters = {
+				turn_offset_meters[0] + rotated_head_meters[0],
+				turn_offset_meters[1] + rotated_head_meters[1],
+				0.0f,
+			};
 		}
 		auto head_offset=composed.head_offset;for(auto& x:head_offset)x*=world_scale;
 		vector3 composed_origin=original_origin;
@@ -698,6 +780,45 @@ namespace vr::head_pose_bridge
 	{
 		const std::lock_guard lock(state_mutex);
 		return camera_applied;
+	}
+
+	bool consume_roomscale_follow(const bool stick_active, float& forward_move, float& right_move) noexcept
+	{
+		forward_move = 0.0f;
+		right_move = 0.0f;
+		const std::lock_guard lock(state_mutex);
+		const auto now = std::chrono::steady_clock::now();
+		if (!target_matched || !enabled || !pose_available || recenter_pending ||
+			!camera_frame_available || !has_last_ordinary_origin ||
+			camera_frame.generation != recenter_count ||
+			now < camera_frame.captured_at ||
+			now - camera_frame.captured_at > std::chrono::milliseconds(150))
+		{
+			roomscale_follow_armed = false;
+			return false;
+		}
+		roomscale_follow_armed = true;
+		roomscale_follow_stick_active = stick_active;
+		roomscale_follow_at = now;
+
+		const float ex = last_head_world_offset_meters[0];
+		const float ey = last_head_world_offset_meters[1];
+		const float dist = std::hypot(ex, ey);
+		constexpr float deadzone_meters = 0.06f;
+		if (!std::isfinite(dist) || dist <= deadzone_meters)
+		{
+			return false;
+		}
+		const auto& yaw_axis = camera_frame.head_yaw_axis;
+		const float local_fwd = ex * yaw_axis[0][0] + ey * yaw_axis[0][1];
+		const float local_right = -(ex * yaw_axis[1][0] + ey * yaw_axis[1][1]);
+		const float excess = dist - deadzone_meters;
+		const float gain = stick_active ? 1.2f : 2.4f;
+		const float max_speed = stick_active ? 0.35f : 0.70f;
+		const float strength = std::min(max_speed, excess * gain);
+		forward_move = (local_fwd / dist) * strength;
+		right_move = (local_right / dist) * strength;
+		return true;
 	}
 
 	bool get_spatial_frame(spatial_frame& output) noexcept

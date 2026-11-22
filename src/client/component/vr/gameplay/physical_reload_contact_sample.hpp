@@ -50,6 +50,11 @@ namespace vr::gameplay::weapons::physical_reload
 		auto chosen=choose_part_grip(held_style?std::span<const part_grip_pose>{&grips[v.slide_grip.pose],1}:
 			std::span<const part_grip_pose>{grips.data(),source.size()},raw,offset,low,high,units,d.slide_capture,off,palm[2],held_style);
 		if(held_style && chosen.pose!=no_part_grip)chosen.pose=v.slide_grip.pose;
+		if(f.body.body.valid && !v.slide_held && chosen.pose!=no_part_grip && d.interaction.slide_radius>0.f &&
+			chosen.distance_meters>d.interaction.slide_radius && chosen.distance_meters<=d.interaction.slide_radius+0.025f)
+		{
+			chosen.distance_meters*=d.interaction.slide_radius/(d.interaction.slide_radius+0.025f);
+		}
 		geometry g{true,live->owner.weapon,v.active?v.ammo.instance_generation:0,f.input.reference_generation,f.input.sequence,
 			f.waist(hand(off),d.supply,d.interaction.waist_radius),chosen.distance_meters,
 			magazine_alignment(d,gun,mag),hand_local,magazine_tip_in_well(d,gun,mag,units),
@@ -59,6 +64,12 @@ namespace vr::gameplay::weapons::physical_reload
 			scale(compose(raw,{grips[bolt_style].contact_in_wrist,{0,0,0,1}}).position,1/units):hand_local;
 		g.magazine_pose=magazine_pose.index;
 		sample_attached_magazine(d,g,gun,wrist,f.wrists[off].rotation,basis,attached_pose,mag,units,knife_mag);
+		const float mag_radius=attached_magazine_radius(d.interaction);
+		if(f.body.body.valid && !v.magazine_leased() && g.magazine.valid && mag_radius>0.f &&
+			g.magazine.grip_distance>mag_radius && g.magazine.grip_distance<=mag_radius+0.025f)
+		{
+			g.magazine.grip_distance*=mag_radius/(mag_radius+0.025f);
+		}
 		if(d.interaction.manual_magazine && d.interaction.manual_magazine->prefer_grasp_facing && chosen.pose<source.size())
 			g.magazine_facing=closer_grasp_facing(raw.rotation,compose(d.magazine_rest,inverse(attached_pose.in_wrist)).rotation,grips[chosen.pose].wrist.rotation);
 		if(d.handle_catch || d.interaction.receiver_release)

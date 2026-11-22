@@ -235,6 +235,17 @@ namespace vr::controllers
 				movement.forward=gameplay::vehicles::merge_driver_throttle(movement.forward,physical.throttle);
 				movement.active=movement.active || physical.steering!=0 || physical.throttle!=0;
 			}
+			if (!driving && gameplay && can_move)
+			{
+				const bool stick_active = movement.forward != 0.0f || movement.right != 0.0f;
+				float follow_forward{}, follow_right{};
+				if (head_pose_bridge::consume_roomscale_follow(stick_active, follow_forward, follow_right))
+				{
+					movement.forward = std::clamp(movement.forward + follow_forward, -1.0f, 1.0f);
+					movement.right = std::clamp(movement.right + follow_right, -1.0f, 1.0f);
+					movement.active = movement.active || follow_forward != 0.0f || follow_right != 0.0f;
+				}
+			}
 			if (!movement.active)
 				return;
 			const auto add_axis = [](const char original, const float axis) {

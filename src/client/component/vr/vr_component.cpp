@@ -182,7 +182,8 @@ namespace vr
 			engine_stereo_probe::record_present(event.frame_index, event.graphics.generation);
 			auto& vr_runtime = runtime::get();
 			vr_runtime.capture_present(event);
-			runtime::get().on_present(event);
+			vr_runtime.on_present(event);
+			d3d11::detail::set_vr_present_paced(vr_runtime.is_session_running());
 		}
 
 		void on_present_post(const d3d11::present_event& event, const HRESULT result)
@@ -196,6 +197,7 @@ namespace vr
 					event.frame_index, result);
 				auto& vr_runtime = runtime::get();
 				vr_runtime.on_present_post(event, result);
+				d3d11::detail::set_vr_present_paced(vr_runtime.is_session_running());
 				engine_stereo_execution::on_present_post(event.frame_index,
 					event.graphics.generation, GetCurrentThreadId(), result);
 				finalize_component_shutdown_if_ready();
@@ -894,6 +896,7 @@ namespace vr
 			engine_stereo_probe::stop();
 			engine_view_probe::set_enabled(false);
 			engine_backend_probe::set_enabled(false);
+			d3d11::detail::set_vr_present_paced(false);
 			runtime::get().shutdown();
 			finalize_component_shutdown_if_ready();
 		}

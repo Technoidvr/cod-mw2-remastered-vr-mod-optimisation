@@ -22,9 +22,27 @@ namespace vr::gameplay::hand_interaction
 		float waist(hand actor,const body_supply_layout& layout,float radius)const noexcept
 		{
 			if(!vr::valid_hand(actor) || !(valid_hands&(1u<<unsigned(actor))) || body.units_per_meter<=0)return INFINITY;
+			const auto point=wrists[unsigned(actor)].position;
 			float result=INFINITY;
 			for(const auto& v:body_supply_volumes(body.head_position,body.head_yaw_axis,body.units_per_meter,layout,radius))
-				result=std::min(result,v.distance(wrists[unsigned(actor)].position)/body.units_per_meter);
+				result=std::min(result,v.distance(point)/body.units_per_meter);
+			if(body.body.valid)
+			{
+				const float units=body.units_per_meter;
+				const float bonus=0.04f;
+				for(const auto& v:body_supply_volumes(body.body.position,body.body.yaw_axis,units,layout,radius+bonus))
+					result=std::min(result,v.distance(point)/units);
+				auto front_layout=layout;
+				front_layout.half_width*=0.65f;
+				front_layout.down=std::max(0.40f,layout.down-0.08f);
+				front_layout.height+=0.06f;
+				const auto torso_front=hands::add(body.body.position,hands::scale(body.body.yaw_axis[0],0.12f*units));
+				for(const auto& v:body_supply_volumes(torso_front,body.body.yaw_axis,units,front_layout,radius+bonus))
+					result=std::min(result,v.distance(point)/units);
+				const auto head_front=hands::add(body.head_position,hands::scale(body.head_yaw_axis[0],0.12f*units));
+				for(const auto& v:body_supply_volumes(head_front,body.head_yaw_axis,units,front_layout,radius+bonus))
+					result=std::min(result,v.distance(point)/units);
+			}
 			return result;
 		}
 	};

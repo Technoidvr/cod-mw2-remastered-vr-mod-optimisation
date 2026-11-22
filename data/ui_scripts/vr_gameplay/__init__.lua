@@ -238,6 +238,7 @@ local function independentSources(parent, original)
             hiddenOriginal = {widget=widget,container=hidden}
         end
     end
+    local EMPTY_PRIOR = {valid = false}
     parent.onRefresh = function(self, event)
         local active = enabled() and not paused() and not Engine.GetDvarBool("vr_hideHud") and vr_weapon_hud.active()
         local released = false
@@ -256,9 +257,8 @@ local function independentSources(parent, original)
             source.definition = data.definition
             source.prior, source.data = source.data,data
         end
-        -- Only ownership transitions collect; stable refreshes allocate no trees
-        -- and never run a full collection. Drop references before collecting.
-        if released then collectgarbage("collect") end
+        -- Only ownership transitions increment GC work; step incrementally so weapon swaps don't hitch.
+        if released then collectgarbage("step", 200) end
         nativeRefresh(self,event)
         if not active then
             hideOriginal(nil)
@@ -272,12 +272,12 @@ local function independentSources(parent, original)
         -- the owned ancestor hides it without interrupting/restarting those fades.
         hideOriginal(self.primaryWidget)
         for _,source in ipairs(sources) do
-            local prior = source.prior or {valid=false}
+            local prior = source.prior or EMPTY_PRIOR
             if source.data.valid and not source.root and not source.failed then
                 local built, buildError = pcall(build,source)
                 if not built then
                     release(source)
-                    collectgarbage("collect")
+                    collectgarbage("step", 200)
                     source.failed = true
                     print("[VR HUD] independent native source rejected: "..tostring(buildError))
                 end
@@ -298,13 +298,17 @@ local function independentSources(parent, original)
                     if graphic.watcherRightHand then
                         graphic.watcherRightHand:registerEventHandler("int_watch_alert",nil)
                     end
-                    local loaded = math.min(source.data.loaded,graphic.clipMax)
-                    local low = source.data.loaded <= source.data.capacity*source.data.lowThreshold
-                    for i=1,graphic.clipMax do
-                        local pip = graphic.pipsRightHand[i]
-                        local state = i<=loaded and (low and "low" or "on") or
-                            (root.isNvgMode and "nvg_off" or "off")
-                        if pip and (pip._vrState ~= state or source.graphic ~= graphic) then
+                    local clipMax = graphic.clipMax
+                    local pips = graphic.pipsRightHand
+                    local loaded = math.min(data.loaded,clipMax)
+                    local low = data.loaded <= data.capacity*data.lowThreshold
+                    local activeState = low and "low" or "on"
+                    local offState = root.isNvgMode and "nvg_off" or "off"
+                    local graphicChanged = source.graphic ~= graphic
+                    for i=1,clipMax do
+                        local pip = pips[i]
+                        local state = i<=loaded and activeState or offState
+                        if pip and (pip._vrState ~= state or graphicChanged) then
                             pip:animateToState(state,0)
                             pip._vrState = state
                         end
