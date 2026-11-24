@@ -597,7 +597,7 @@ function Launcher({ data }: { data: Bootstrap }) {
     <div className="launcher-shell">
       <header className="app-header">
         <span className="brand">{data.product}</span>
-        <span className="build-label">{data.version}</span>
+        <span className="build-label">{data.version} · TechnoidVR Fork</span>
         <WindowControls
           t={t}
           onError={(error) => setNotice({ key: errorKey(error), error: true })}
@@ -921,19 +921,35 @@ function Launcher({ data }: { data: Bootstrap }) {
                 {t("about.stage", { version: data.version })}
               </p>
             </div>
-            <button
-              className="button"
-              onClick={() =>
-                void bridge!
-                  .request("links.open", { id: "project" })
-                  .catch((error) =>
-                    setNotice({ key: errorKey(error), error: true }),
-                  )
-              }
-            >
-              <ExternalLink size={16} />
-              {t("about.github")}
-            </button>
+            <p className="about-fork-note">{t("about.forkSummary")}</p>
+            <div className="about-links">
+              <button
+                className="button"
+                onClick={() =>
+                  void bridge!
+                    .request("links.open", { id: "project" })
+                    .catch((error) =>
+                      setNotice({ key: errorKey(error), error: true }),
+                    )
+                }
+              >
+                <ExternalLink size={16} />
+                {t("about.github")}
+              </button>
+              <button
+                className="button ghost"
+                onClick={() =>
+                  void bridge!
+                    .request("links.open", { id: "upstream" })
+                    .catch((error) =>
+                      setNotice({ key: errorKey(error), error: true }),
+                    )
+                }
+              >
+                <ExternalLink size={16} />
+                {t("about.upstreamGithub")}
+              </button>
+            </div>
             {credits.map((group) => (
               <div className="credits-group" key={group.title}>
                 <h2><DecodedText text={t(group.title)} /></h2>

@@ -1,4 +1,18 @@
-# Overlord
+# Overlord — TechnoidVR Optimized Fork
+
+> **Community Optimization & Gameplay Fork by [TechnoidVR](https://github.com/Technoidvr/cod-mw2-remastered-vr-mod-optimisation)**
+>
+> Special thanks to **[Aeka0](https://github.com/Aeka0)** — the original creator and maintainer of **[Overlord VR](https://github.com/Aeka0/Overlord)** — for building this incredible VR mod for *Call of Duty: Modern Warfare 2 Campaign Remastered*!
+>
+> **Main additions in this fork** (detailed in [OPTIMIZATIONS_FR.md](OPTIMIZATIONS_FR.md)):
+> - **Memory & PE footprint optimizations** (`vr::lazy_box` / `vr::lazy_array`, `SizeOfImage` reduced from 282.9 MB to 111.7 MB, per-thread TLS template reduced by 98.2%).
+> - **Single-core CPU & DX11 driver (AMD `atidxx64.dll` / NVIDIA) optimizations** (AVX2/O2/Ob3 build, fast-path validation, eliminating redundant 768-slot D3D11 register readbacks per eye, cached COM descriptors, 1 ms Windows timer resolution & `ABOVE_NORMAL_PRIORITY_CLASS`).
+> - **OpenXR & shader optimizations** (`DXGI_FORMAT_R11G11B10_FLOAT` swapchain priority, single-`Flush()` stereo submission, `XR_EXT_performance_settings`, desktop preview decoupling, 4-tap/9-tap spatial blur, incremental Lua GC & GSC caching).
+> - **VR gameplay fixes** (room-scale collision capsule sync through doorways without visual drift, back/shoulder long-gun holster bitmask & dual head/torso tracking + auto support-grip release, forgiving waist magazine pouch grab & charging handle interaction, launcher fork attribution & upstream credits).
+
+---
+
+# Overlord (Upstream README)
 
 English | [简体中文](README.zh-CN.md)
 

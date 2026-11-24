@@ -638,6 +638,20 @@ input[aria-invalid="true"] {
   font-size: 14px;
   color: #ddd;
 }
+.home-fork-badge {
+  display: inline-block;
+  max-width: 100%;
+  margin-top: 8px;
+  padding: 4px 10px;
+  border-radius: 5px;
+  border: 1px solid rgba(141, 255, 154, 0.28);
+  background: rgba(14, 24, 16, 0.72);
+  color: #d9f5dd;
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: break-word;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+}
 .home-scene:before {
   content: "";
   position: absolute;
@@ -797,6 +811,17 @@ mark {
   align-items: center;
   gap: 16px;
   padding: 18px;
+}
+.about-fork-note {
+  margin: 0 0 16px;
+  max-width: 680px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+.about-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 .credits-group {
   display: grid;

@@ -142,7 +142,9 @@ struct launcher::impl
 			{
 				if (params.size() != 1 || !params.contains("id") || !params.at("id").is_string()) throw std::runtime_error("Invalid project link.");
 				const auto id = params.at("id").get<std::string>();
-				const std::string url = id == "project" ? product::repository_url : id == "releases" ? product::releases_url :
+				const std::string url = id == "project" ? product::repository_url :
+					id == "releases" ? product::releases_url :
+					id == "upstream" ? product::upstream_repository_url :
 					id == "issues" ? std::string(product::repository_url) + "/issues" : "";
 				if (url.empty()) throw std::runtime_error("Unsupported project link.");
 				const std::wstring destination(url.begin(), url.end());

@@ -82,6 +82,43 @@ namespace vr
 			return accepting_work.load(std::memory_order_acquire);
 		}
 
+		HMODULE winmm_module{};
+		std::atomic_bool timer_period_enabled{false};
+
+		void enable_vr_scheduler_precision() noexcept
+		{
+			SetPriorityClass(GetCurrentProcess(), ABOVE_NORMAL_PRIORITY_CLASS);
+			if (!winmm_module) winmm_module = LoadLibraryW(L"winmm.dll");
+			if (winmm_module)
+			{
+				using time_period_fn = UINT(WINAPI*)(UINT);
+				if (const auto begin_period = reinterpret_cast<time_period_fn>(
+					GetProcAddress(winmm_module, "timeBeginPeriod")))
+				{
+					if (begin_period(1) == 0)
+						timer_period_enabled.store(true, std::memory_order_release);
+				}
+			}
+		}
+
+		void disable_vr_scheduler_precision() noexcept
+		{
+			if (timer_period_enabled.exchange(false, std::memory_order_acq_rel) && winmm_module)
+			{
+				using time_period_fn = UINT(WINAPI*)(UINT);
+				if (const auto end_period = reinterpret_cast<time_period_fn>(
+					GetProcAddress(winmm_module, "timeEndPeriod")))
+				{
+					end_period(1);
+				}
+			}
+			if (winmm_module)
+			{
+				FreeLibrary(winmm_module);
+				winmm_module = nullptr;
+			}
+		}
+
 
 		void on_device_created(const d3d11::device_snapshot& graphics)
 		{
@@ -855,6 +892,7 @@ namespace vr
 			shutdown_started.store(false, std::memory_order_release);
 			accepting_work.store(true, std::memory_order_release);
 			alive.store(true, std::memory_order_release);
+			enable_vr_scheduler_precision();
 			// runtime::get() owns a function-local singleton whose constructor may
 			// select the runtime backend. Its first use must remain on this expected
 			// main/loader thread, never the watchdog or a Present callback.
@@ -898,6 +936,7 @@ namespace vr
 			engine_backend_probe::set_enabled(false);
 			d3d11::detail::set_vr_present_paced(false);
 			runtime::get().shutdown();
+			disable_vr_scheduler_precision();
 			finalize_component_shutdown_if_ready();
 		}
 	};

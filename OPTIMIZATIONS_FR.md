@@ -35,3 +35,15 @@ Ce dépôt contient les optimisations de performances (CPU/GPU/Mémoire/D3D11/Op
   - Détachement automatique de la main de support lorsque la main secondaire s'éloigne du garde-main (`> 18 cm`) et actionne `Trigger` pour saisir un chargeur ou armer la culasse.
   - Extension de la zone de munitions en jeu aux axes du torse et à l'avant de la ceinture / bas du gilet tactique (`+12 cm` vers l'avant, `+8 cm` vers le haut, `+4 cm` de rayon).
   - Marge additionnelle (`+2,5 cm`) sur la saisie du levier d'armement / culasse et du chargeur engagé.
+
+## 5. Correctif Holster Épaule / Dos, Optimisations Phase 3 & Launcher Fork
+- **Correction critique du rangement des fusils d'assaut / armes longues à l'épaule** (`weapon_carry_runtime.cpp`) :
+  - Correction du masque de bit passé à `weapon_holsters::hit()` (`1u << 2 == 4` au lieu de `1u << unsigned(location::back) == 16`, qui bloquait le rangement de toutes les armes longues).
+  - Synchronisation du retour haptique d'épaule (`finish_interactions()`) avec les volumes étendus, les deux référentiels tête/torse et le relâchement automatique de la main de soutien (`vr_supportGripLock`).
+- **Optimisations supplémentaires (Phase 3)** :
+  - Validation ultra-rapide par paire des pointeurs de cibles D3D11 dans `engine_stereo_eye_resources.cpp::begin_pair()` (évite ~30 appels COM sous verrou GPU à chaque frame).
+  - Désactivation du recensement diagnostic des 68 draw-lists par œil en mode production dans `engine_stereo_owner_pass.cpp::end_view()` (conservé uniquement si `vr_debugViewProbes` est actif).
+  - Suppression de l'appel COM `GetDevice()` redondant par frame dans `desktop_mirror.cpp::prepare()`.
+  - Activation de la résolution de timer système 1 ms (`timeBeginPeriod(1)`) et priorité processus `ABOVE_NORMAL_PRIORITY_CLASS` (`vr_component.cpp`) pour stabiliser le pacing OpenXR/OpenVR sur Ryzen.
+- **Rebranding du Launcher VR (`src/client/product.hpp`, `launcher.cpp`, `credits.json`, `locales/*.json`, `src/launcher-ui/`)** :
+  - Mention claire du **fork optimisé par TechnoidVR** sur l'accueil, l'en-tête, la notice de démarrage et la page **À propos**, avec un hommage et un bouton direct vers le dépôt original **Overlord VR d'Aeka0** (`https://github.com/Aeka0/Overlord`).

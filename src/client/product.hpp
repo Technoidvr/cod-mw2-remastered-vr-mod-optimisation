@@ -12,8 +12,9 @@ namespace product
 	inline constexpr auto application_key = "overlord";
 	inline constexpr auto application_manifest = L"overlord.vrmanifest";
 #endif
-	inline constexpr auto repository_url = "https://github.com/Aeka0/Overlord";
-	inline constexpr auto releases_url = "https://github.com/Aeka0/Overlord/releases";
+	inline constexpr auto repository_url = "https://github.com/Technoidvr/cod-mw2-remastered-vr-mod-optimisation";
+	inline constexpr auto releases_url = "https://github.com/Technoidvr/cod-mw2-remastered-vr-mod-optimisation/releases";
+	inline constexpr auto upstream_repository_url = "https://github.com/Aeka0/Overlord";
 
 	constexpr std::string_view localization_key(std::string_view key) noexcept
 	{

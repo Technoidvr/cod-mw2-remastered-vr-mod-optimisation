@@ -90,6 +90,11 @@ namespace vr::desktop_mirror
 				resources.generation = eye.generation;
 			}
 			if (FAILED(resources.error)) return nullptr;
+			if (resources.shader)
+			{
+				for (const auto& source : resources.sources)
+					if (source.texture.Get() == eye.texture.Get()) return source.view.Get();
+			}
 			Microsoft::WRL::ComPtr<ID3D11Device> device;
 			eye.texture->GetDevice(&device);
 			if (!resources.shader)

@@ -1,6 +1,12 @@
 [
   {
-    "title": "about.developers",
+    "title": "about.forkMaintainer",
+    "people": [
+      "TechnoidVR"
+    ]
+  },
+  {
+    "title": "about.originalCreators",
     "people": [
       "Aeka0",
       "lesan0622"
@@ -17,6 +23,7 @@
   {
     "title": "about.thanks",
     "people": [
+      "Aeka0 (Overlord VR)",
       "momo5502",
       "quaK",
       "xensik",

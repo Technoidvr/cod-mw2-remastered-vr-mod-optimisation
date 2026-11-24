@@ -41,6 +41,7 @@ export function HomePage({
           <h1><DecodedText text={product} active={revealReady} durationMs={960}
             glow={{}} /></h1>
           <p><DecodedText text={version} active={revealReady} durationMs={600} delayMs={120} glow={{}} /></p>
+          <div className="home-fork-badge">{t("home.forkBadge")}</div>
         </div>
         <MotionSurface as="div" className="home-controls">
           <div className="home-runtime">

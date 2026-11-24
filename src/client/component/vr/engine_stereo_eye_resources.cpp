@@ -1493,58 +1493,79 @@ namespace vr::engine_stereo_eye_resources
 		std::array<Microsoft::WRL::ComPtr<ID3D11Texture2D>, isolated_target_count>
 			originals{};
 		std::array<D3D11_TEXTURE2D_DESC, isolated_target_count> descriptions{};
-		for (std::size_t index{}; index < bindings.size(); ++index)
+		bool fast_matched = resources.ready &&
+			resources.device.Get() == device &&
+			resources.context == reinterpret_cast<std::uintptr_t>(context) &&
+			resources.generation == device_generation;
+		if (fast_matched)
 		{
-			// Missing optional histories are inactive slots, not native target 0.
-			// A partially specified binding is still rejected.
-			if (index != 0 && bindings[index].target_id == 0 && !bindings[index].owner_view)
-				continue;
-			const auto expected_id = index == 0 ? isolated_target_id :
-				native_post_aa::history_targets[index - 1];
-			if (bindings[index].target_id != expected_id ||
-				bindings[index].target_role != role::color ||
-				!source_role_matches(bindings[index]) ||
-				!extract_texture(bindings[index].owner_view, originals[index]))
+			for (std::size_t index{}; index < bindings.size(); ++index)
 			{
-				last_failure.store(failure::binding_contract, std::memory_order_release);
-				pair_failures.fetch_add(1, std::memory_order_relaxed);
-				return false;
-			}
-			originals[index]->GetDesc(&descriptions[index]);
-			if (!valid_resource_description(bindings[index].target_role,
-				descriptions[index]))
-			{
-				last_failure.store(failure::resource_contract, std::memory_order_release);
-				pair_failures.fetch_add(1, std::memory_order_relaxed);
-				return false;
-			}
-			Microsoft::WRL::ComPtr<ID3D11Device> source_device;
-			originals[index]->GetDevice(source_device.GetAddressOf());
-			if (source_device.Get() != device)
-			{
-				last_failure.store(failure::resource_contract, std::memory_order_release);
-				pair_failures.fetch_add(1, std::memory_order_relaxed);
-				return false;
-			}
-			for (std::size_t previous{}; previous < index; ++previous)
-			{
-				if (bindings[previous].target_id == bindings[index].target_id ||
-					originals[previous].Get() == originals[index].Get())
+				const auto& existing = resources.targets[index];
+				if (existing.target_id != bindings[index].target_id ||
+					existing.target_role != bindings[index].target_role ||
+					existing.owner_view.Get() != bindings[index].owner_view)
 				{
-					last_failure.store(failure::binding_contract,
-						std::memory_order_release);
-					pair_failures.fetch_add(1, std::memory_order_relaxed);
-					return false;
+					fast_matched = false;
+					break;
 				}
 			}
 		}
-
-		if (!resources_match(bindings, originals, descriptions, device, context,
-			device_generation) && !rebuild_resources(device, context, device_generation,
-			bindings, originals, descriptions))
+		if (!fast_matched)
 		{
-			pair_failures.fetch_add(1, std::memory_order_relaxed);
-			return false;
+			for (std::size_t index{}; index < bindings.size(); ++index)
+			{
+				// Missing optional histories are inactive slots, not native target 0.
+				// A partially specified binding is still rejected.
+				if (index != 0 && bindings[index].target_id == 0 && !bindings[index].owner_view)
+					continue;
+				const auto expected_id = index == 0 ? isolated_target_id :
+					native_post_aa::history_targets[index - 1];
+				if (bindings[index].target_id != expected_id ||
+					bindings[index].target_role != role::color ||
+					!source_role_matches(bindings[index]) ||
+					!extract_texture(bindings[index].owner_view, originals[index]))
+				{
+					last_failure.store(failure::binding_contract, std::memory_order_release);
+					pair_failures.fetch_add(1, std::memory_order_relaxed);
+					return false;
+				}
+				originals[index]->GetDesc(&descriptions[index]);
+				if (!valid_resource_description(bindings[index].target_role,
+					descriptions[index]))
+				{
+					last_failure.store(failure::resource_contract, std::memory_order_release);
+					pair_failures.fetch_add(1, std::memory_order_relaxed);
+					return false;
+				}
+				Microsoft::WRL::ComPtr<ID3D11Device> source_device;
+				originals[index]->GetDevice(source_device.GetAddressOf());
+				if (source_device.Get() != device)
+				{
+					last_failure.store(failure::resource_contract, std::memory_order_release);
+					pair_failures.fetch_add(1, std::memory_order_relaxed);
+					return false;
+				}
+				for (std::size_t previous{}; previous < index; ++previous)
+				{
+					if (bindings[previous].target_id == bindings[index].target_id ||
+						originals[previous].Get() == originals[index].Get())
+					{
+						last_failure.store(failure::binding_contract,
+							std::memory_order_release);
+						pair_failures.fetch_add(1, std::memory_order_relaxed);
+						return false;
+					}
+				}
+			}
+
+			if (!resources_match(bindings, originals, descriptions, device, context,
+				device_generation) && !rebuild_resources(device, context, device_generation,
+				bindings, originals, descriptions))
+			{
+				pair_failures.fetch_add(1, std::memory_order_relaxed);
+				return false;
+			}
 		}
 		const auto observed_view_epoch =
 			view_creation_epoch.load(std::memory_order_acquire);

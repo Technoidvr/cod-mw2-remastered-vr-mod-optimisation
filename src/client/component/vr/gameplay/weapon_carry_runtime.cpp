@@ -874,7 +874,9 @@ namespace vr::gameplay::weapons::carry
 					    detail};
 				};
 				const auto last = valid_hand(v->owner.rear) ? v->owner.rear : v->owner.support;
-				const unsigned eligible_slots = v->policy.waist ? 7u : (1u << static_cast<unsigned>(location::back));
+				constexpr unsigned all_holster_bits = 7u;
+				constexpr unsigned back_slot_bit = 1u << 2; // weapon_holsters::hit places[2] == location::back
+				const unsigned eligible_slots = v->policy.waist ? all_holster_bits : back_slot_bit;
 				const auto target = (valid_hands & (1u << static_cast<unsigned>(last)))
 				                        ? resolve_holster_hit(hands[static_cast<int>(last)].position,
 				                                              wrists[static_cast<int>(last)].position,
@@ -1423,30 +1425,71 @@ namespace vr::gameplay::weapons::carry
 		const auto valid_hands = batch.frame.valid_hands;
 		const auto& layout = batch.layout;
 		const auto& slots = batch.frame.holsters;
+		auto forgiving = layout;
+		forgiving.waist_radius += 0.04f;
+		forgiving.back_radius += 0.04f;
+		const auto forgiving_torso_slots = locate_holsters(body, forgiving);
+		auto head_only_body = body;
+		head_only_body.body.valid = false;
+		const auto head_slots = locate_holsters(head_only_body, forgiving);
 		unsigned near_hands{};
-		if (slots.valid)
+		const auto near_back_slot = [&](const holsters& candidate_slots, unsigned h) noexcept
 		{
-			auto area = slots.volumes[2];
+			if (!candidate_slots.valid) return false;
+			auto area = candidate_slots.volumes[2];
 			area.radius += .04f * body.units_per_meter;
-			for (unsigned h = 0; h < 2; ++h)
-				if ((valid_hands & (1u << h)) && area.contains(batch.hand_positions[h])) near_hands |= 1u << h;
+			return area.contains(batch.hand_positions[h]) || area.contains(wrists[h].position);
+		};
+		for (unsigned h = 0; h < 2; ++h)
+		{
+			if (!(valid_hands & (1u << h))) continue;
+			if (near_back_slot(slots, h) || near_back_slot(forgiving_torso_slots, h) || near_back_slot(head_slots, h))
+				near_hands |= 1u << h;
 		}
 		const auto operated = batch.edges.pressed | batch.edges.released | batch.edges.consumed;
 		const bool blocked = sequences::for_player(batch.player).block_carry;
+		const bool allow_storage = !cheats::green_beret();
 		const auto cues = slot_feedback.update(batch.frame.input, near_hands, operated, [&](hand actor)
 		{
 			const auto h = unsigned(actor);
 			if (blocked || !input.squeeze[h].active || (batch.edges.deferred & (1u << h))) return false;
-			const auto candidate = back_slot_candidate(owned, actor, slots, batch.hand_positions[h],
-			                                           !cheats::green_beret());
-			if (candidate.action == outcome::unchanged ||
-			    !hand_interaction::permits(actor, hand_interaction::domain::carry, candidate.subject,
-			                              hand_interaction::recipe::single, hand_interaction::role::control))
-				return false;
-			if (candidate.action == outcome::drawn)
-				return !input.squeeze[h].down && draw_contact(owned, slots, wrists[h].position) == location::back;
-			const auto* held = owned.find(candidate.subject);
-			return check_release(*held, pose(*held, wrists, input, valid_hands), body).clear;
+			if (const auto* held = owned.in_hand(actor))
+			{
+				constexpr unsigned back_slot_bit = 1u << 2; // weapon_holsters::hit places[2] == location::back
+				if (!inventory::accepts(*held, location::back)) return false;
+				const bool in_back = hit(slots, batch.hand_positions[h], back_slot_bit) == location::back ||
+				                     hit(slots, wrists[h].position, back_slot_bit) == location::back ||
+				                     hit(forgiving_torso_slots, batch.hand_positions[h], back_slot_bit) == location::back ||
+				                     hit(forgiving_torso_slots, wrists[h].position, back_slot_bit) == location::back ||
+				                     hit(head_slots, batch.hand_positions[h], back_slot_bit) == location::back ||
+				                     hit(head_slots, wrists[h].position, back_slot_bit) == location::back;
+				if (!in_back) return false;
+				if (!hand_interaction::permits(actor, hand_interaction::domain::carry, held->id,
+				                               hand_interaction::recipe::single, hand_interaction::role::control))
+					return false;
+				auto preview = owned;
+				const unsigned effective_mask =
+				    (1u << h) | (held->owner.rear == actor && valid_hand(held->owner.support)
+				                    ? (1u << static_cast<unsigned>(held->owner.support))
+				                    : 0u);
+				const auto change = preview.release(held->id, effective_mask, location::back, true,
+				                                    [](const instance&) { return false; }, false, allow_storage);
+				if (change.action != outcome::stowed && change.action != outcome::exchanged) return false;
+				return check_release(*held, pose(*held, wrists, input, valid_hands), body).clear;
+			}
+			if (input.squeeze[h].down) return false;
+			const bool can_draw_back =
+			    draw_contact(owned, slots, wrists[h].position) == location::back ||
+			    draw_contact(owned, slots, batch.hand_positions[h]) == location::back ||
+			    draw_contact(owned, forgiving_torso_slots, wrists[h].position) == location::back ||
+			    draw_contact(owned, forgiving_torso_slots, batch.hand_positions[h]) == location::back ||
+			    draw_contact(owned, head_slots, wrists[h].position) == location::back ||
+			    draw_contact(owned, head_slots, batch.hand_positions[h]) == location::back;
+			if (!can_draw_back) return false;
+			const auto* back_item = owned.next_back();
+			return back_item &&
+			       hand_interaction::permits(actor, hand_interaction::domain::carry, back_item->id,
+			                                 hand_interaction::recipe::single, hand_interaction::role::control);
 		});
 		for (unsigned h = 0; h < 2; ++h)
 			if (cues & (1u << h)) feedback::carry_readiness(hand(h), input);

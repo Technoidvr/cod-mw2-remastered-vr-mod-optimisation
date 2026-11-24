@@ -3,6 +3,7 @@
 #include "component/vr/native_render_contract.hpp"
 
 #include "engine_stereo_owner_pass.hpp"
+#include "debug_options.hpp"
 #include "diagnostics/sun_shadow.hpp"
 #include "engine_scene_resolution.hpp"
 #include "diagnostics.hpp"
@@ -1781,12 +1782,15 @@ namespace vr::engine_stereo_owner_pass
 		// These fields are not yet mutated: the census distinguishes lists that H2
 		// finalized per eye from lists that retained the natural center/rebase, so one
 		// test run can decide whether a separate list-origin propagation is required.
-		const auto list_census = census_model_list_origins(record,
-			active.source_primary_origin);
-		active.model_list_eye_origin_matches[eye] = list_census.eye_matches;
-		active.model_list_center_origin_matches[eye] = list_census.center_matches;
-		active.model_list_zero_origins[eye] = list_census.zeros;
-		active.model_list_other_origins[eye] = list_census.other;
+		if (!active.production || debug_options::enabled(debug_options::probe::view))
+		{
+			const auto list_census = census_model_list_origins(record,
+				active.source_primary_origin);
+			active.model_list_eye_origin_matches[eye] = list_census.eye_matches;
+			active.model_list_center_origin_matches[eye] = list_census.center_matches;
+			active.model_list_zero_origins[eye] = list_census.zeros;
+			active.model_list_other_origins[eye] = list_census.other;
+		}
 		engine_stereo_view::camera_model_origin_census camera_model_census{};
 		if (!engine_stereo_view::census_camera_model_list_origins(record,
 			camera_model_census))
