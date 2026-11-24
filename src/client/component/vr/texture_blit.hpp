@@ -19,8 +19,10 @@ namespace vr::texture_blit
 		{
 			Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
 			Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> view;
+			D3D11_TEXTURE2D_DESC description{};
 			encoding format{};
 		};
+		Microsoft::WRL::ComPtr<ID3D11Device> validated_device_;
 		Microsoft::WRL::ComPtr<ID3D11Device> device_;
 		Microsoft::WRL::ComPtr<ID3D11DeviceContext> deferred_;
 		Microsoft::WRL::ComPtr<ID3D11VertexShader> vertex_;

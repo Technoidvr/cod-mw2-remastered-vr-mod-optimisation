@@ -64,6 +64,7 @@ float4 main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 	void renderer::reset() noexcept
 	{
 		sources_ = {};
+		validated_device_.Reset();
 		device_.Reset();
 		deferred_.Reset();
 		vertex_.Reset();
@@ -79,7 +80,9 @@ float4 main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 	{
 		if (device_.Get() == device && deferred_)
 			return true;
-		reset();
+		if ((device_ && device_.Get() != device) ||
+		    (validated_device_ && validated_device_.Get() != device))
+			reset();
 		Microsoft::WRL::ComPtr<ID3DBlob> vertex, pixel, errors;
 		if (FAILED(D3DCompile(vertex_source,
 		                      sizeof(vertex_source) - 1,
@@ -143,49 +146,121 @@ float4 main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 			return false;
 		}
 		device_ = device;
+		validated_device_ = device;
 		return true;
 	}
 	bool renderer::draw(const draw_request& request, std::string& error)
 	{
 		const auto& [graphics, source, destination, width, height, format, dim] = request;
-		if (!graphics || !source || !destination || !texture_extent::valid(width,height))
+		if (!graphics || !source || !destination || !texture_extent::valid(width, height))
 		{
 			error = "invalid texture blit arguments";
 			return false;
 		}
-		Microsoft::WRL::ComPtr<ID3D11Device> source_device, target_device;
-		source->GetDevice(&source_device);
-		destination->GetDevice(&target_device);
-		Microsoft::WRL::ComPtr<ID3D11Resource> target;
-		destination->GetResource(&target);
-		if (source_device != graphics.device || target_device != graphics.device || target.Get() == source ||
-		    graphics.context->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE)
+		if (graphics.context->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE)
 		{
 			error = "texture blit requires separate source/output on the same immediate-context device";
 			return false;
 		}
+		if ((device_ && device_.Get() != graphics.device.Get()) ||
+		    (validated_device_ && validated_device_.Get() != graphics.device.Get()))
+		{
+			reset();
+		}
+		Microsoft::WRL::ComPtr<ID3D11Device> target_device;
+		destination->GetDevice(&target_device);
+		Microsoft::WRL::ComPtr<ID3D11Resource> target;
+		destination->GetResource(&target);
+		if (target_device != graphics.device || !target || target.Get() == source)
+		{
+			error = "texture blit requires separate source/output on the same immediate-context device";
+			return false;
+		}
+		cached_source* any_source_entry = nullptr;
+		cached_source* exact_entry = nullptr;
+		if (validated_device_.Get() == graphics.device.Get())
+		{
+			for (auto& entry : sources_)
+			{
+				if (entry.texture.Get() == source)
+				{
+					if (!any_source_entry)
+						any_source_entry = &entry;
+					if (entry.format == format)
+					{
+						exact_entry = &entry;
+						break;
+					}
+				}
+			}
+		}
+		D3D11_TEXTURE2D_DESC src_desc{};
+		if (any_source_entry)
+		{
+			src_desc = any_source_entry->description;
+		}
+		else
+		{
+			Microsoft::WRL::ComPtr<ID3D11Device> source_device;
+			source->GetDevice(&source_device);
+			if (source_device != graphics.device)
+			{
+				error = "texture blit requires separate source/output on the same immediate-context device";
+				return false;
+			}
+			source->GetDesc(&src_desc);
+			validated_device_ = graphics.device;
+		}
+		const float clamped_dim = std::isfinite(dim) ? std::clamp(dim, 0.f, 1.f) : 0.f;
+		if (format == encoding::linear && clamped_dim == 0.f)
+		{
+			D3D11_RENDER_TARGET_VIEW_DESC rtv_desc{};
+			destination->GetDesc(&rtv_desc);
+			Microsoft::WRL::ComPtr<ID3D11Texture2D> target_tex;
+			if (rtv_desc.ViewDimension == D3D11_RTV_DIMENSION_TEXTURE2D &&
+			    rtv_desc.Texture2D.MipSlice == 0 &&
+			    SUCCEEDED(target.As(&target_tex)) && target_tex)
+			{
+				D3D11_TEXTURE2D_DESC dst_desc{};
+				target_tex->GetDesc(&dst_desc);
+				if (src_desc.Width == width && src_desc.Height == height &&
+				    dst_desc.Width == width && dst_desc.Height == height &&
+				    src_desc.Format == dst_desc.Format &&
+				    src_desc.MipLevels == 1 && dst_desc.MipLevels == 1 &&
+				    src_desc.ArraySize == 1 && dst_desc.ArraySize == 1 &&
+				    src_desc.SampleDesc.Count == 1 && dst_desc.SampleDesc.Count == 1)
+				{
+					const auto queue = d3d11::acquire_gpu_queue_interop();
+					graphics.context->CopyResource(target.Get(), source);
+					if (FAILED(graphics.device->GetDeviceRemovedReason()))
+					{
+						error = "texture blit device was removed";
+						return false;
+					}
+					if (!any_source_entry)
+					{
+						auto& entry = sources_[cursor_++ % sources_.size()];
+						entry = {};
+						entry.texture = source;
+						entry.description = src_desc;
+						entry.format = format;
+					}
+					return true;
+				}
+			}
+		}
 		if (!ensure(graphics.device.Get(), error))
 			return false;
-		cached_source* cached = nullptr;
-		for (auto& entry : sources_)
-			if (entry.texture.Get() == source && entry.format == format)
-			{
-				cached = &entry;
-				break;
-			}
-		if (!cached)
+		cached_source* cached = exact_entry;
+		if (!cached || !cached->view)
 		{
-			auto& entry = sources_[cursor_++ % sources_.size()];
-			entry = {};
-			D3D11_TEXTURE2D_DESC description{};
-			source->GetDesc(&description);
-			if (description.MipLevels != 1 || description.ArraySize != 1 || description.SampleDesc.Count != 1)
+			if (src_desc.MipLevels != 1 || src_desc.ArraySize != 1 || src_desc.SampleDesc.Count != 1)
 			{
 				error = "texture blit source is not a single sampled 2D image";
 				return false;
 			}
 			D3D11_SHADER_RESOURCE_VIEW_DESC view{};
-			view.Format = description.Format;
+			view.Format = src_desc.Format;
 			if (format != encoding::linear)
 			{
 				if (view.Format == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB)
@@ -195,23 +270,28 @@ float4 main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 			}
 			view.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
 			view.Texture2D.MipLevels = 1;
-			if (FAILED(graphics.device->CreateShaderResourceView(source, &view, &entry.view)))
+			Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> shader_view;
+			if (FAILED(graphics.device->CreateShaderResourceView(source, &view, &shader_view)))
 			{
 				error = "texture blit source view creation failed";
 				return false;
 			}
-			entry.texture = source;
-			entry.format = format;
-			cached = &entry;
+			if (!cached)
+			{
+				cached = &sources_[cursor_++ % sources_.size()];
+				*cached = {};
+				cached->texture = source;
+				cached->description = src_desc;
+				cached->format = format;
+			}
+			cached->view = std::move(shader_view);
 		}
 		const struct
 		{
 			unsigned mode;
 			float dim;
 			unsigned padding[2];
-		} parameters{
-		    static_cast<unsigned>(format), std::isfinite(dim) ? std::clamp(dim, 0.f, 1.f) : 0.f, {0, 0}};
-		deferred_->ClearState();
+		} parameters{static_cast<unsigned>(format), clamped_dim, {0, 0}};
 		deferred_->UpdateSubresource(parameters_.Get(), 0, nullptr, &parameters, 0, 0);
 		const float blend[4]{};
 		deferred_->OMSetBlendState(blend_.Get(), blend, D3D11_DEFAULT_SAMPLE_MASK);
@@ -230,6 +310,7 @@ float4 main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 		Microsoft::WRL::ComPtr<ID3D11CommandList> commands;
 		if (FAILED(deferred_->FinishCommandList(FALSE, &commands)))
 		{
+			deferred_->ClearState();
 			error = "texture blit recording failed";
 			return false;
 		}

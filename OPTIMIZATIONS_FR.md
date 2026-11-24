@@ -47,3 +47,14 @@ Ce dépôt contient les optimisations de performances (CPU/GPU/Mémoire/D3D11/Op
   - Activation de la résolution de timer système 1 ms (`timeBeginPeriod(1)`) et priorité processus `ABOVE_NORMAL_PRIORITY_CLASS` (`vr_component.cpp`) pour stabiliser le pacing OpenXR/OpenVR sur Ryzen.
 - **Rebranding du Launcher VR (`src/client/product.hpp`, `launcher.cpp`, `credits.json`, `locales/*.json`, `src/launcher-ui/`)** :
   - Mention claire du **fork optimisé par TechnoidVR** sur l'accueil, l'en-tête, la notice de démarrage et la page **À propos**, avec un hommage et un bouton direct vers le dépôt original **Overlord VR d'Aeka0** (`https://github.com/Aeka0/Overlord`).
+
+## 6. Optimisations Phase 4 (D3D11 / OpenXR / HUD & Panneaux Spatiaux)
+- **Blit OpenXR sans CommandList ni shader en jeu normal (`texture_blit.hpp`, `texture_blit.cpp`)** :
+  - Ajout d'un chemin rapide `CopyResource` lorsque `encoding::linear`, `dim == 0` et que la texture source et la swapchain OpenXR ont les mêmes dimensions, format (`DXGI_FORMAT_R11G11B10_FLOAT`), mono-échantillon et mipmap `0`, avec cache de validation source (`validated_device_`, `sources_` avec `description`). Élimine 2 créations/exécutions de `ID3D11CommandList` (`FinishCommandList` + `ExecuteCommandList(..., TRUE)`) par frame sur `atidxx64.dll` / DX11.
+- **Réduction des relectures SRV/UAV et appels `Set*` d'isolation (`engine_stereo_eye_resources.cpp`)** :
+  - Cache négatif `cache.foreign` sécurisé pour `original` et `eyes[0/1/2]` (`match_target_resource` empêchant toute texture œil non suivie d'y entrer, gardé par `foreign_cache_current()`).
+  - *Dirty-checks* avant `OMSetRenderTargets*`, `CSSetUnorderedAccessViews` et `*SetShaderResources` dans `rebind_inherited_state()` et `restore_inherited_state()`.
+  - Suivi des stages SRV touchés (`pair.touched_srv_stages`) et de l'état post-restauration (`post_restore_dirty`, `note_external_views_bound`) pour sauter les lectures des stages propres et éviter le balayage redondant `count_bound_target_views()` dans `end_pair()` tout en conservant la détection stricte de quarantaine (`untracked_right_srv`).
+- **Fusion CommandList & caches COM HUD/Panneaux (`spatial_panel_renderer.hpp`, `spatial_panel_renderer.cpp`, `native_hud_capture.cpp`)** :
+  - `spatial_panel::renderer` met en cache les métadonnées internes (`background_width_/height_/format_/view_format_/mipmapped_`, `ink_width_/height_`), évite les doubles validations `GetDevice()`/`GetResource()` via `validated_surfaces` et fusionne les deux `CommandList` de `draw_layers()` en un seul enregistrement/exécution (avec déliaison explicite de `ink_target_` avant lecture de `ink_view_`).
+  - `native_hud_capture.cpp` met en cache les états immuables (`blends`, `depth_states`, `rasters`), restaure 1 seule cible OM lorsque les slots `1..7` sont vides et passe les compteurs/états diagnostiques en `std::memory_order_relaxed`.
