@@ -1625,11 +1625,11 @@ namespace vr::engine_stereo_owner_pass
 		{
 			return;
 		}
-		Microsoft::WRL::ComPtr<ID3D11RenderTargetView> view;
-		context->OMGetRenderTargets(1, view.GetAddressOf(), nullptr);
 		const auto target_index = native_display_contract::target_index(target_id);
 		if (target_index < native_display_contract::target_count)
 		{
+			Microsoft::WRL::ComPtr<ID3D11RenderTargetView> view;
+			context->OMGetRenderTargets(1, view.GetAddressOf(), nullptr);
 			if (!view) return;
 			Microsoft::WRL::ComPtr<ID3D11Resource> resource;
 			view->GetResource(&resource);

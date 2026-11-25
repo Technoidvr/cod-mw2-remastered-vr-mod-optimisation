@@ -73,3 +73,19 @@ Ce dépôt contient les optimisations de performances (CPU/GPU/Mémoire/D3D11/Op
 - **Cache de taille fichier & synchronisation I/O (`src/client/component/database.cpp`)** :
   - Calcul unique de `uint64_t size` dans `bnet_file_handle_t` à l'ouverture (`bnet_fs_open_file_stub`), supprimant les allers-retours `seekg(0, std::ios::end)` / `tellg()` à chaque lecture (`bnet_fs_read_stub`) ou requête de taille (`bnet_fs_size_stub`).
   - Protection par `std::mutex bnet_file_handles_mutex` des accès à `bnet_file_handles` et `handle_allocator` (`bnet_fs_open_file_stub`, `bnet_fs_read_stub`, `bnet_fs_tell_stub`, `bnet_fs_size_stub`, `bnet_fs_close_stub`, `bink_io_read_stub`, `bink_io_seek_stub`, `close_fastfile_handles()`), en libérant le mutex avant tout appel aux hooks d'origine.
+
+## 8. OptiLord v0.2.0 — Optimisations CPU Hot-Path Scènes Denses (Opération Wolverines)
+- **Suppression de verrous, copies COM et sondes post-bootstrap dans le renderer stéréo (`src/client/component/vr/engine_stereo_renderer.cpp`)** :
+  - Dans `backend_target_select_probe_stub`, suppression de `d3d11::get_device_snapshot()` (évite la prise de `graphics_mutex` et 3 paires `AddRef`/`Release` COM à chaque `R_SetRenderTarget`) et de l'appel inutilisé `get_current_binding()`, en passant directement `owner_pass->context.Get()` et `0` à `engine_stereo_owner_pass::note_target_selection()`.
+  - Dans `h2_query_publish_probe_stub` et `record_h2_query_result`, contournement post-bootstrap dès que `bootstrap_complete()` retourne `true`.
+- **Évitement d'`OMGetRenderTargets` sur les cibles non-display (`src/client/component/vr/engine_stereo_owner_pass.cpp`)** :
+  - Dans `note_target_selection()`, déplacement de `OMGetRenderTargets` à l'intérieur du seul chemin `target_index < target_count` après résolution de `target_index`, épargnant environ **95 %** des cibles intermédiaires non-display dans les scènes chargées.
+- **Anneau lock-free à 8 vues pour le cache négatif d'ombre solaire (`src/client/component/vr/engine_stereo_sun_shadow.cpp`)** :
+  - Remplacement du cache négatif à 1 seule entrée par un anneau lock-free de 8 vues non-matching (`non_matching_views`, remis à zéro dans `watch()` et `unwatch()`), supprimant les évictions répétées lorsque plusieurs cibles hors ombre solaire alternent.
+  - Exploité à la fois dans `dsv_matches_watched()` et dans `write_view()` afin d'éviter des appels COM `GetResource()` redondants.
+- **Armement conditionnel de la capture HUD sur `DrawIndexed` (`src/client/component/vr/native_hud_capture.cpp`, `src/client/component/vr/engine_stereo_draw_indexed.cpp`)** :
+  - Suppression de l'enregistrement permanent de `copy_draw` dans `post_unpack()` ; `copy_draw` n'est désormais armé que pendant l'exécution de `native_hud_capture::handle()` (et restauré à `nullptr` en sortie).
+  - Lecture de `copy_observer` en tout premier dans `draw_stub()` (avant `live_installed` et `live_context`), court-circuitant **99,9 %** des appels `DrawIndexed` 3D hors HUD.
+- **Rationalisation de l'isolation par œil (`src/client/component/vr/engine_stereo_eye_resources.cpp`)** :
+  - Rationalisation de `active_isolated_eye()` : un seul appel à `GetCurrentThreadId()`, vérifications thread-local effectuées avant les lectures atomiques cross-core (tout en conservant la détection d'erreur de contexte/génération).
+  - Factorisation du chemin unitaire dans `rewrite_admitted_view_synced()` afin que `rewrite_admitted_view_batch()` n'exécute `sync_foreign_caches_on_owner()` et `foreign_cache_current()` qu'une seule fois avant la boucle, supprimant la double consultation `foreign_cache_current()` / `foreign_cached()` par slot tout en préservant intégralement la table `watched_resources` de la v0.1.0.

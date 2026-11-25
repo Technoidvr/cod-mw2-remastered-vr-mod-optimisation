@@ -329,14 +329,39 @@ namespace vr::engine_stereo_eye_resources
 
 		[[nodiscard]] bool active_isolated_eye(ID3D11DeviceContext* const context) noexcept
 		{
-			if (cleanup_quarantined.load(std::memory_order_acquire) ||
-				invalidation_pending.load(std::memory_order_acquire) ||
-				!owner_hook_token_matches() || !owns_pair_on_current_thread() ||
-				pair.current_eye >= auxiliary_scene::view_count) return false;
+			if (current_pair.pair_id == 0 ||
+				!pair_active.load(std::memory_order_acquire) ||
+				cleanup_quarantined.load(std::memory_order_acquire) ||
+				invalidation_pending.load(std::memory_order_acquire))
+			{
+				return false;
+			}
+			const auto tid = GetCurrentThreadId();
+			if (active_owner_thread.load(std::memory_order_acquire) != tid)
+			{
+				return false;
+			}
+			const auto pair_id = active_pair.load(std::memory_order_acquire);
+			const auto expected_ctx = expected_context.load(std::memory_order_acquire);
+			const auto expected_gen = expected_generation.load(std::memory_order_acquire);
+			if (pair_id == 0 || expected_ctx == 0 || expected_gen == 0 ||
+				current_pair.pair_id != pair_id ||
+				current_pair.context != expected_ctx ||
+				current_pair.generation != expected_gen)
+			{
+				return false;
+			}
+			if (!pair.active || pair.owner_thread != tid ||
+				pair.pair_id != pair_id ||
+				pair.context != current_pair.context ||
+				pair.generation != current_pair.generation ||
+				pair.current_eye >= auxiliary_scene::view_count)
+			{
+				return false;
+			}
 			if (reinterpret_cast<std::uintptr_t>(context) != pair.context ||
-				pair.context != expected_context.load(std::memory_order_acquire) ||
-				pair.generation != expected_generation.load(
-					std::memory_order_acquire))
+				pair.context != expected_ctx ||
+				pair.generation != expected_gen)
 			{
 				publish_failure(failure::context);
 				return false;
@@ -582,16 +607,21 @@ namespace vr::engine_stereo_eye_resources
 		}
 
 		template <typename View>
-		[[nodiscard]] View* rewrite_admitted_view(target_view_cache<View>& cache,
-			View* const original) noexcept
+		[[nodiscard]] View* rewrite_admitted_view_synced(
+			target_view_cache<View>& cache, View* const original,
+			const bool foreign_ok, bool* const proven_foreign = nullptr) noexcept
 		{
-			sync_foreign_caches_on_owner();
+			if (proven_foreign != nullptr) *proven_foreign = false;
 			const auto identity = reinterpret_cast<std::uintptr_t>(original);
 			if (const auto* index = cache.known.find(identity); index && *index < cache.count)
 				return cache.entries[*index].eyes[pair.current_eye].Get();
 			// Non-target SRVs dominate scene draws. Even a negative-cache hit used
 			// to scan every original/left/right mapping first.
-			if (foreign_cached(cache, original)) return original;
+			if (foreign_cached(cache, original))
+			{
+				if (proven_foreign != nullptr) *proven_foreign = foreign_ok;
+				return original;
+			}
 			for (std::size_t index{}; index < cache.count; ++index)
 			{
 				const auto& entry = cache.entries[index];
@@ -622,8 +652,18 @@ namespace vr::engine_stereo_eye_resources
 			case target_resource_match::none:
 			default:
 				cache_foreign(cache, original);
+				if (proven_foreign != nullptr) *proven_foreign = foreign_ok;
 				return original;
 			}
+		}
+
+		template <typename View>
+		[[nodiscard]] View* rewrite_admitted_view(target_view_cache<View>& cache,
+			View* const original) noexcept
+		{
+			sync_foreign_caches_on_owner();
+			return rewrite_admitted_view_synced(cache, original,
+				foreign_cache_current());
 		}
 
 		template <typename View>
@@ -1217,11 +1257,15 @@ namespace vr::engine_stereo_eye_resources
 			local_replacements = 0;
 			if (any_unproven_or_isolated != nullptr)
 				*any_unproven_or_isolated = false;
+			sync_foreign_caches_on_owner();
+			const bool foreign_ok = foreign_cache_current();
 			for (UINT index{}; index < view_count; ++index)
 			{
 				auto* const original_view = views[index];
+				bool proven_foreign = false;
 				auto* const candidate = original_view == nullptr ? nullptr :
-					rewrite_admitted_view(cache, original_view);
+					rewrite_admitted_view_synced(cache, original_view,
+						foreign_ok, &proven_foreign);
 				if (candidate != original_view)
 				{
 					if (!any_rewritten)
@@ -1235,9 +1279,7 @@ namespace vr::engine_stereo_eye_resources
 					++local_replacements;
 				}
 				else if (any_unproven_or_isolated != nullptr &&
-					original_view != nullptr &&
-					(!foreign_cache_current() ||
-						!foreign_cached(cache, original_view)))
+					original_view != nullptr && !proven_foreign)
 				{
 					*any_unproven_or_isolated = true;
 				}

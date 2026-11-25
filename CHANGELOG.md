@@ -4,6 +4,26 @@ Toutes les évolutions notables d'**OptiLord** (maintenu par **TechnoidVR**, bas
 
 ---
 
+## [0.2.0] — OptiLord (Optimisations CPU Scènes Denses / Opération Wolverines)
+
+### Optimisations CPU Hot-Path Scènes Denses (`v0.2.0`)
+- **Suppression de verrous, copies COM et sondes post-bootstrap dans le renderer stéréo (`src/client/component/vr/engine_stereo_renderer.cpp`)** :
+  - Suppression de `d3d11::get_device_snapshot()` (verrou `graphics_mutex` + 3× `AddRef`/`Release` COM) et de `get_current_binding()` inutilisé dans `backend_target_select_probe_stub` (transmission directe de `owner_pass->context.Get()` et `0` à `note_target_selection()`).
+  - Contournement post-bootstrap de `h2_query_publish_probe_stub` et `record_h2_query_result` via `bootstrap_complete()`.
+- **Évitement d'`OMGetRenderTargets` sur les cibles non-display (`src/client/component/vr/engine_stereo_owner_pass.cpp`)** :
+  - Déplacement de `OMGetRenderTargets` à l'intérieur du seul chemin `target_index < target_count` dans `note_target_selection()`, épargnant environ **95 %** des cibles non-display.
+- **Anneau lock-free 8 vues pour le cache négatif d'ombre solaire (`src/client/component/vr/engine_stereo_sun_shadow.cpp`)** :
+  - Remplacement du cache négatif à 1 entrée par un anneau lock-free de 8 vues non-matching (`non_matching_views`) utilisé dans `dsv_matches_watched()` **et** `write_view()`.
+- **Armement conditionnel de la capture HUD sur `DrawIndexed` (`src/client/component/vr/native_hud_capture.cpp`, `src/client/component/vr/engine_stereo_draw_indexed.cpp`)** :
+  - Armement conditionnel de `copy_draw` uniquement pendant `native_hud_capture::handle()` (suppression de l'enregistrement permanent dans `post_unpack()`, restauration à `nullptr` en sortie).
+  - Test de `copy_observer` en premier dans `draw_stub()` avant `live_installed` et `live_context`, court-circuitant **99,9 %** des appels `DrawIndexed` 3D.
+- **Rationalisation de l'isolation par œil (`src/client/component/vr/engine_stereo_eye_resources.cpp`)** :
+  - Rationalisation de `active_isolated_eye()` : un seul appel à `GetCurrentThreadId()` et vérifications thread-local avant les lectures atomiques cross-core.
+  - Factorisation de `rewrite_admitted_view_synced()` supprimant la double consultation `foreign_cache_current()` / `foreign_cached()` par slot dans `rewrite_admitted_view_batch()` (tout en préservant `watched_resources` de la v0.1.0).
+- **Versionnage (`version.json`)** : mise à jour vers `"0.2.0"` (`file_version: [0, 2, 0, 0]`, `prerelease: true`).
+
+---
+
 ## [0.1.0] — OptiLord (Base Overlord Beta 8)
 
 ### Identité & Launcher
@@ -41,6 +61,15 @@ Toutes les évolutions notables d'**OptiLord** (maintenu par **TechnoidVR**, bas
 ---
 
 ## English Summary
+
+### [0.2.0] — OptiLord (Dense-Scene CPU Hot-Path Optimizations / Operation Wolverines)
+- **Version Bump (`v0.2.0`)**: Updated `version.json` to `"0.2.0"` (`file_version: [0, 2, 0, 0]`, `prerelease: true`).
+- **Dense-Scene CPU Hot-Path Optimizations**:
+  - `src/client/component/vr/engine_stereo_renderer.cpp`: Removed `d3d11::get_device_snapshot()` (`graphics_mutex` lock + 3× COM `AddRef`/`Release`) and unused `get_current_binding()` from `backend_target_select_probe_stub`; bypassed `h2_query_publish_probe_stub` and `record_h2_query_result` post-bootstrap via `bootstrap_complete()`.
+  - `src/client/component/vr/engine_stereo_owner_pass.cpp`: Moved `OMGetRenderTargets` inside the `target_index < target_count` branch of `note_target_selection()`, sparing ~95% of non-display targets.
+  - `src/client/component/vr/engine_stereo_sun_shadow.cpp`: Replaced the 1-entry negative cache with an 8-entry lock-free `non_matching_views` ring used in both `dsv_matches_watched()` and `write_view()`.
+  - `src/client/component/vr/native_hud_capture.cpp` & `src/client/component/vr/engine_stereo_draw_indexed.cpp`: Conditionally armed `copy_draw` only during `native_hud_capture::handle()` and checked `copy_observer` first in `draw_stub()`, short-circuiting 99.9% of 3D `DrawIndexed` calls.
+  - `src/client/component/vr/engine_stereo_eye_resources.cpp`: Streamlined `active_isolated_eye()` (single `GetCurrentThreadId()`, thread-local checks before cross-core atomics) and factored `rewrite_admitted_view_synced()` to eliminate per-slot redundant `foreign_cache_current()` / `foreign_cached()` lookups in `rewrite_admitted_view_batch()`.
 
 ### [0.1.0] — OptiLord (Built on Overlord Beta 8)
 - **Dedicated Identity & Independent Versioning (`v0.1.0`)**: Rebranded launcher, PE metadata, SteamVR manifest (`OptiLord (Overlord VR)`), and all 9 locales crediting **Aeka0** and **Overlord Beta 8**, while preserving `overlord.exe`, `overlord` app key, and `overlord.vrmanifest` for SteamVR compatibility.

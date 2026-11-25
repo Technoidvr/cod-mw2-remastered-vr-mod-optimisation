@@ -7,7 +7,9 @@
 #include "native_render_contract.hpp"
 #include "component/console.hpp"
 #include "game/assets.hpp"
+#include <array>
 #include <atomic>
+#include <cstddef>
 #include <utils/hook.hpp>
 #include <utils/hook_validation.hpp>
 
@@ -22,12 +24,36 @@ namespace vr::engine_stereo_sun_shadow
 		std::atomic_bool binding_uncertain{};
 		std::atomic_bool draw_observer_armed{};
 		std::atomic<ID3D11DepthStencilView*> last_matching_dsv{};
-		std::atomic<ID3D11DepthStencilView*> last_non_matching_dsv{};
+		std::array<std::atomic<ID3D11View*>, 8> non_matching_views{};
+		std::atomic_size_t non_matching_cursor{};
 		thread_local bool producing_left{};
 		std::atomic_uint64_t left_count{}, skipped{}, refused{}, dirty_count{}, saved{};
 		template<class T> T read(const void* data, std::size_t offset) noexcept
 		{
 			T result{}; std::memcpy(&result, static_cast<const std::uint8_t*>(data) + offset, sizeof(result)); return result;
+		}
+		[[nodiscard]] bool is_cached_non_matching(ID3D11View* const view) noexcept
+		{
+			if (!view) return false;
+			for (const auto& slot : non_matching_views)
+			{
+				if (slot.load(std::memory_order_relaxed) == view) return true;
+			}
+			return false;
+		}
+		void cache_non_matching(ID3D11View* const view) noexcept
+		{
+			if (!view || is_cached_non_matching(view)) return;
+			const auto slot = non_matching_cursor.fetch_add(1, std::memory_order_relaxed) % non_matching_views.size();
+			non_matching_views[slot].store(view, std::memory_order_relaxed);
+		}
+		void clear_non_matching_views() noexcept
+		{
+			for (auto& slot : non_matching_views)
+			{
+				slot.store(nullptr, std::memory_order_relaxed);
+			}
+			non_matching_cursor.store(0, std::memory_order_relaxed);
 		}
 		void write(ID3D11Resource* resource) noexcept
 		{
@@ -38,7 +64,7 @@ namespace vr::engine_stereo_sun_shadow
 		{
 			if (!view || !target) return false;
 			if (view == last_matching_dsv.load(std::memory_order_relaxed)) return true;
-			if (view == last_non_matching_dsv.load(std::memory_order_relaxed)) return false;
+			if (is_cached_non_matching(view)) return false;
 			Microsoft::WRL::ComPtr<ID3D11Resource> resource;
 			view->GetResource(&resource);
 			if (resource.Get() == target)
@@ -46,7 +72,7 @@ namespace vr::engine_stereo_sun_shadow
 				last_matching_dsv.store(view, std::memory_order_relaxed);
 				return true;
 			}
-			last_non_matching_dsv.store(view, std::memory_order_relaxed);
+			cache_non_matching(view);
 			return false;
 		}
 		void write_view(ID3D11View* view) noexcept
@@ -54,8 +80,15 @@ namespace vr::engine_stereo_sun_shadow
 			auto* const target = watched.load(std::memory_order_acquire);
 			if (!view || !target) return;
 			if (view == last_matching_dsv.load(std::memory_order_relaxed)) { write(target); return; }
-			if (view == last_non_matching_dsv.load(std::memory_order_relaxed)) return;
-			Microsoft::WRL::ComPtr<ID3D11Resource> resource; view->GetResource(&resource); write(resource.Get());
+			if (is_cached_non_matching(view)) return;
+			Microsoft::WRL::ComPtr<ID3D11Resource> resource;
+			view->GetResource(&resource);
+			if (resource.Get() == target)
+			{
+				write(resource.Get());
+				return;
+			}
+			if (watched.load(std::memory_order_acquire) == target) cache_non_matching(view);
 		}
 		void resource_operation(const engine_stereo_resource_ops::event& event) noexcept
 		{
@@ -151,7 +184,7 @@ namespace vr::engine_stereo_sun_shadow
 	{
 		unwatch(); changed = false; binding_uncertain = false; owner_context = context; producing_left = true;
 		last_matching_dsv.store(nullptr, std::memory_order_relaxed);
-		last_non_matching_dsv.store(nullptr, std::memory_order_relaxed);
+		clear_non_matching_views();
 		engine_stereo_resource_ops::set_observer(engine_stereo_resource_ops::observer_channel::sun_reuse, resource_operation);
 		engine_stereo_output_merger::set_clear_observers(engine_stereo_output_merger::clear_observer_channel::sun_reuse, clear_color, clear_depth);
 		engine_stereo_output_merger::set_depth_bind_observer(on_depth_bind);
@@ -176,13 +209,14 @@ namespace vr::engine_stereo_sun_shadow
 	{
 		producing_left = false;
 		last_matching_dsv.store(nullptr, std::memory_order_relaxed);
-		last_non_matching_dsv.store(nullptr, std::memory_order_relaxed);
+		clear_non_matching_views();
 		if (!watched.exchange(nullptr, std::memory_order_acq_rel)) return;
 		set_draw_observer_armed(false);
 		engine_stereo_execution::set_execute_command_list_observer(nullptr);
 		engine_stereo_output_merger::set_depth_bind_observer(nullptr);
 		engine_stereo_resource_ops::set_observer(engine_stereo_resource_ops::observer_channel::sun_reuse, nullptr);
 		engine_stereo_output_merger::set_clear_observers(engine_stereo_output_merger::clear_observer_channel::sun_reuse, nullptr, nullptr);
+		clear_non_matching_views();
 	}
 	void finish_left() noexcept { producing_left = false; }
 	bool watching(std::uintptr_t resource, ID3D11DeviceContext* context) noexcept

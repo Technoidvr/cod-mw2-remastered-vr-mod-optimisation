@@ -1928,9 +1928,6 @@ namespace vr::engine_stereo_renderer
 				backend_target_select_hook.invoke<void>(context, target_id);
 				return;
 			}
-			const auto graphics = d3d11::get_device_snapshot();
-			const auto binding_before =
-				engine_stereo_output_merger::get_current_binding(graphics.context.Get());
 			const engine_stereo_backend_target::selection_scope scope{
 				active_backend_transaction.backend_id,
 				active_stereo_binding.publication_sequence,
@@ -1955,7 +1952,7 @@ namespace vr::engine_stereo_renderer
 				owner_pass && *owner_pass)
 			{
 				engine_stereo_owner_pass::note_target_selection(*owner_pass,
-					target_id, graphics.context.Get(), binding_before.sequence);
+					target_id, owner_pass->context.Get(), 0);
 			}
 		}
 
@@ -2448,7 +2445,8 @@ namespace vr::engine_stereo_renderer
 
 		void h2_query_publish_probe_stub(void* const query)
 		{
-			if (!engine_backend_probe::is_enabled())
+			if (!engine_backend_probe::is_enabled() ||
+				engine_stereo_execution::bootstrap_complete())
 			{
 				reinterpret_cast<h2_query_publish_fn>(h2_query_publish_function)(query);
 				return;
@@ -2468,6 +2466,11 @@ namespace vr::engine_stereo_renderer
 			const std::uint32_t generation, const std::int32_t result,
 			const std::uint32_t complete) noexcept
 		{
+			if (!engine_backend_probe::is_enabled() ||
+				engine_stereo_execution::bootstrap_complete())
+			{
+				return;
+			}
 			(void)engine_backend_probe::record_query_result(query, generation,
 				result, complete != 0);
 		}

@@ -278,9 +278,11 @@ namespace vr::engine_stereo_draw_indexed
 				return;
 			}
 			const auto observer = persistent_draw_observer.load(std::memory_order_relaxed);
-			const auto copy = (live_installed.load(std::memory_order_relaxed) &&
+			const auto copy_candidate = copy_observer.load(std::memory_order_acquire);
+			const auto copy = (copy_candidate != nullptr &&
+				live_installed.load(std::memory_order_relaxed) &&
 				reinterpret_cast<std::uintptr_t>(context) == live_context.load(std::memory_order_relaxed)) ?
-				copy_observer.load(std::memory_order_acquire) : nullptr;
+				copy_candidate : nullptr;
 			inside_draw = true;
 			const auto exit = gsl::finally([] { inside_draw = false; });
 			region_capture::draw_indexed(index_count);

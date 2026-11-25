@@ -1116,7 +1116,11 @@ namespace vr::native_hud_capture
 			// Shader binding is established by the native handler/flush, not here.
 			const auto* selected_command = *cursor;
 			copying_scope = selected;
-			const auto exit = gsl::finally([] { copying_scope = nullptr; });
+			engine_stereo_draw_indexed::set_draw_copy_observer(copy_draw);
+			const auto exit = gsl::finally([] {
+				engine_stereo_draw_indexed::set_draw_copy_observer(nullptr);
+				copying_scope = nullptr;
+			});
 			selected->copying_command = selected_command;
 			// Private scratch keeps the submitted stream immutable. Native handlers
 			// still shape and draw all glyphs, including localized text and shadows.
@@ -1647,7 +1651,6 @@ namespace vr::native_hud_capture
 			if(verify(0x14079c3e0,compass)&&*reinterpret_cast<const std::uintptr_t*>(0x1409b1ce0)==0x14079c3e0)
 				compass_quad_hook.create(0x14079c3e0,compass_quad_stub);
 			else console::error("[VR menus] native compass quad signature/table rejected\n");
-			engine_stereo_draw_indexed::set_draw_copy_observer(copy_draw);
 			// This native loop dispatches the unfiltered global UI directly through
 			// the same table. Frontend menus never enter the per-view HUD dispatcher.
 			constexpr std::uint8_t ui_begin[]{0x48,0x89,0x84,0x24,0xa8,0,0,0};
