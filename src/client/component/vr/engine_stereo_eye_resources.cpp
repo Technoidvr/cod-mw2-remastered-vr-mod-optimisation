@@ -2022,6 +2022,15 @@ namespace vr::engine_stereo_eye_resources
 			resource_rebuilds.load(std::memory_order_relaxed) : 0;
 	}
 
+	std::uint32_t current_isolated_eye(ID3D11DeviceContext* const context) noexcept
+	{
+		if (context != nullptr && active_isolated_eye(context) && pair.current_eye < 2)
+		{
+			return pair.current_eye;
+		}
+		return 0xFFFFFFFFu;
+	}
+
 	ID3D11RenderTargetView* isolated_color_view(const std::uint64_t pair_id,
 		const std::uint32_t eye, const std::uint32_t target_id) noexcept
 	{

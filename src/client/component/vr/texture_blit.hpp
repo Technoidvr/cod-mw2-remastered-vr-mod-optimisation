@@ -45,6 +45,7 @@ namespace vr::texture_blit
 			unsigned width, height;
 			encoding source_encoding;
 			float dim{};
+			float sharpness{};
 		};
 		bool draw(const draw_request&, std::string& error);
 		void reset() noexcept;

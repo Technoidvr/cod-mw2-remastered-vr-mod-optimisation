@@ -67,6 +67,7 @@ namespace vr::engine_stereo_output_merger
 			clear_observer_channel_count> clear_depth_stencil_observers{};
 		std::atomic<clear_state_observer_fn> clear_state_observer{};
 		std::atomic<depth_bind_observer_fn> depth_bind_observer{};
+		std::atomic<post_clear_depth_hook_fn> post_clear_depth_hook{};
 		std::atomic<render_target_rewriter_fn> render_target_rewriter{};
 		std::atomic<depth_stencil_rewriter_fn> depth_stencil_rewriter{};
 		std::atomic<unordered_access_rewriter_fn> unordered_access_rewriter{};
@@ -91,6 +92,7 @@ namespace vr::engine_stereo_output_merger
 		thread_local transaction* active_transaction{};
 		thread_local replay_guard* active_replay_guard{};
 		thread_local bool inside_output_merger{};
+		thread_local bool in_post_clear_hook{};
 		// Zero-initialized POD avoids __dyn_tls_on_demand_init checks on hot D3D11 hooks.
 		thread_local tls_binding_snapshot current_binding{};
 		thread_local std::uint64_t current_binding_sequence{};
@@ -531,6 +533,17 @@ namespace vr::engine_stereo_output_merger
 						current_binding.sequence);
 				}
 			}
+			if (effective_view != nullptr && active_replay_guard == nullptr &&
+				active_transaction == nullptr && !in_post_clear_hook)
+			{
+				if (const auto post_clear = post_clear_depth_hook.load(
+					std::memory_order_acquire))
+				{
+					in_post_clear_hook = true;
+					post_clear(context, effective_view, flags, depth);
+					in_post_clear_hook = false;
+				}
+			}
 		}
 	}
 
@@ -601,6 +614,11 @@ namespace vr::engine_stereo_output_merger
 	void set_depth_bind_observer(const depth_bind_observer_fn value) noexcept
 	{
 		depth_bind_observer.store(value, std::memory_order_release);
+	}
+
+	void set_post_clear_depth_hook(const post_clear_depth_hook_fn hook) noexcept
+	{
+		post_clear_depth_hook.store(hook, std::memory_order_release);
 	}
 
 	void set_view_rewriters(const render_target_rewriter_fn render_target,

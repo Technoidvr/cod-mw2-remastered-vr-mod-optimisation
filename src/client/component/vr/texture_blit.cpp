@@ -32,7 +32,10 @@ cbuffer Parameters : register(b0)
 {
     uint mode;
     float dim;
-    uint2 padding;
+    float sharpness;
+    float padding0;
+    float2 rcp_source_size;
+    float2 padding1;
 };
 // Values match texture_blit::encoding sent through Parameters.
 static const uint SOURCE_LINEAR = 0;
@@ -50,7 +53,24 @@ float4 main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
     float4 color = source.Sample(sampling, uv);
     if (mode == SOURCE_LINEAR)
-        return float4(color.rgb * (1 - dim), color.a);
+    {
+        if (sharpness > 0.001)
+        {
+            float3 ec = max(color.rgb, 0.0);
+            float3 b = max(source.SampleLevel(sampling, uv + float2(0.0, -rcp_source_size.y), 0.0).rgb, 0.0);
+            float3 d = max(source.SampleLevel(sampling, uv + float2(-rcp_source_size.x, 0.0), 0.0).rgb, 0.0);
+            float3 f = max(source.SampleLevel(sampling, uv + float2(rcp_source_size.x, 0.0), 0.0).rgb, 0.0);
+            float3 h = max(source.SampleLevel(sampling, uv + float2(0.0, rcp_source_size.y), 0.0).rgb, 0.0);
+            float3 mn = min(min(min(b, d), min(f, h)), ec);
+            float3 mx = max(max(max(b, d), max(f, h)), ec);
+            float3 amp = sqrt(saturate(min(mn, max(1.0 - mx, 0.0)) / max(mx, 1e-5)));
+            float peak = -0.2 * saturate(sharpness);
+            float3 w = amp * peak;
+            float3 out_rgb = max(((b + d + f + h) * w + ec) / max(1.0 + 4.0 * w, 1e-4), 0.0);
+            return float4(out_rgb * (1.0 - dim), color.a);
+        }
+        return float4(color.rgb * (1.0 - dim), color.a);
+    }
 
     float alpha = mode == SOURCE_ENCODED_OPAQUE ? 1 : color.a;
     float3 encoded = color.rgb;
@@ -126,7 +146,7 @@ float4 main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 		D3D11_BLEND_DESC blend{};
 		blend.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
 		D3D11_BUFFER_DESC buffer{};
-		buffer.ByteWidth = 16;
+		buffer.ByteWidth = 32;
 		buffer.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
 		buffer.Usage = D3D11_USAGE_DEFAULT;
 		if (FAILED(device->CreateDeferredContext(0, &deferred_)) ||
@@ -151,7 +171,7 @@ float4 main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 	}
 	bool renderer::draw(const draw_request& request, std::string& error)
 	{
-		const auto& [graphics, source, destination, width, height, format, dim] = request;
+		const auto& [graphics, source, destination, width, height, format, dim, sharpness] = request;
 		if (!graphics || !source || !destination || !texture_extent::valid(width, height))
 		{
 			error = "invalid texture blit arguments";
@@ -212,7 +232,8 @@ float4 main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 			validated_device_ = graphics.device;
 		}
 		const float clamped_dim = std::isfinite(dim) ? std::clamp(dim, 0.f, 1.f) : 0.f;
-		if (format == encoding::linear && clamped_dim == 0.f)
+		const float clamped_sharpness = std::isfinite(sharpness) ? std::clamp(sharpness, 0.f, 1.f) : 0.f;
+		if (format == encoding::linear && clamped_dim == 0.f && clamped_sharpness == 0.f)
 		{
 			D3D11_RENDER_TARGET_VIEW_DESC rtv_desc{};
 			destination->GetDesc(&rtv_desc);
@@ -290,8 +311,19 @@ float4 main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 		{
 			unsigned mode;
 			float dim;
-			unsigned padding[2];
-		} parameters{static_cast<unsigned>(format), clamped_dim, {0, 0}};
+			float sharpness;
+			float padding0;
+			float rcp_source_size[2];
+			float padding1[2];
+		} parameters{
+		    static_cast<unsigned>(format),
+		    clamped_dim,
+		    clamped_sharpness,
+		    0.f,
+		    {1.0f / static_cast<float>((std::max)(1u, src_desc.Width)),
+		     1.0f / static_cast<float>((std::max)(1u, src_desc.Height))},
+		    {0.f, 0.f}};
+		static_assert(sizeof(parameters) == 32);
 		deferred_->UpdateSubresource(parameters_.Get(), 0, nullptr, &parameters, 0, 0);
 		const float blend[4]{};
 		deferred_->OMSetBlendState(blend_.Get(), blend, D3D11_DEFAULT_SAMPLE_MASK);

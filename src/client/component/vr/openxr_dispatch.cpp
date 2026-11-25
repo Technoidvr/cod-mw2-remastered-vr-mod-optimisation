@@ -115,6 +115,14 @@ namespace vr::openxr
 				    reinterpret_cast<PFN_xrPerfSettingsSetPerformanceLevelEXT>(fn);
 			}
 		}
+		{
+			PFN_xrVoidFunction fn{};
+			if (XR_SUCCEEDED(get_instance_proc_addr(instance, "xrGetVisibilityMaskKHR", &fn)) &&
+			    fn != nullptr)
+			{
+				get_visibility_mask = reinterpret_cast<PFN_xrGetVisibilityMaskKHR>(fn);
+			}
+		}
 		return true;
 	}
 

@@ -11,6 +11,7 @@
 #include "desktop_mirror.hpp"
 #include "desktop_mirror_layout.hpp"
 #include "engine_backend_probe.hpp"
+#include "engine_scene_resolution.hpp"
 #include "engine_stereo_binding.hpp"
 #include "engine_stereo_backend_target.hpp"
 #include "engine_stereo_backend_view.hpp"
@@ -25,7 +26,9 @@
 #include "engine_stereo_renderer.hpp"
 #include "engine_view_probe.hpp"
 #include "head_pose_bridge.hpp"
+#include "hidden_area_mask.hpp"
 #include "native_menu.hpp"
+#include "render_tuning.hpp"
 #include "vr_runtime.hpp"
 
 #include "component/command.hpp"
@@ -60,6 +63,9 @@ namespace vr
 		game::dvar_t* vr_engine_swap_eyes{};
 		game::dvar_t* vr_desktop_fov{};
 		game::dvar_t* vr_desktop_eye{};
+		game::dvar_t* vr_render_scale{};
+		game::dvar_t* vr_sharpening{};
+		game::dvar_t* vr_hidden_area_mesh{};
 
 		std::mutex listener_mutex;
 		std::atomic_bool soft_freeze_reported{false};
@@ -120,6 +126,18 @@ namespace vr
 		}
 
 
+		void post_clear_depth_hidden_area(ID3D11DeviceContext* const context,
+			ID3D11DepthStencilView* const view, const UINT flags, const FLOAT depth) noexcept
+		{
+			if ((flags & D3D11_CLEAR_DEPTH) == 0 || depth != 0.0f) return;
+			if (!vr::render_tuning::hidden_area_mesh.load(std::memory_order_relaxed)) return;
+			const auto eye = vr::engine_stereo_eye_resources::current_isolated_eye(context);
+			if (eye >= 2) return;
+			const auto extent = vr::engine_scene_resolution::get_report().requested;
+			if (extent.width == 0 || extent.height == 0) return;
+			(void)vr::hidden_area_mask::stamp_eye_depth(context, view, eye, extent.width, extent.height);
+		}
+
 		void on_device_created(const d3d11::device_snapshot& graphics)
 		{
 			if (!is_accepting_work()) return;
@@ -157,6 +175,10 @@ namespace vr
 				console::error("[VR] target-91 eye-local resource hooks were not installed; "
 					"native stereo pairs will remain fail-closed\n");
 			}
+			if (output_merger_installed && eye_resources_installed)
+			{
+				engine_stereo_output_merger::set_post_clear_depth_hook(&post_clear_depth_hidden_area);
+			}
 			auto* const execution_context = output_merger_installed &&
 				draw_indexed_installed ? graphics.context.Get() : nullptr;
 			const auto execution_installed = engine_stereo_execution::install(
@@ -188,6 +210,8 @@ namespace vr
 				graphics.generation);
 			engine_stereo_owner_pass::invalidate_device(graphics.context.Get(),
 				graphics.generation);
+			engine_stereo_output_merger::set_post_clear_depth_hook(nullptr);
+			hidden_area_mask::invalidate_device();
 			engine_stereo_output_merger::invalidate_device(graphics.context.Get(),
 				graphics.generation);
 			engine_stereo_draw_indexed::invalidate_device(graphics.context.Get(),
@@ -256,6 +280,10 @@ namespace vr
 			if (is_accepting_work())
 			{
 				diagnostics::record_renderer_frame();
+				if (vr_sharpening)
+					render_tuning::sharpening.store(vr_sharpening->current.value, std::memory_order_relaxed);
+				if (vr_hidden_area_mesh)
+					render_tuning::hidden_area_mesh.store(vr_hidden_area_mesh->current.enabled, std::memory_order_relaxed);
 			}
 		}
 
@@ -798,6 +826,12 @@ namespace vr
 			}
 			if (vr_first_person_scale)
 				first_person_size::requested.store(vr_first_person_scale->current.value, std::memory_order_relaxed);
+			if (vr_render_scale)
+				render_tuning::render_scale.store(vr_render_scale->current.value, std::memory_order_relaxed);
+			if (vr_sharpening)
+				render_tuning::sharpening.store(vr_sharpening->current.value, std::memory_order_relaxed);
+			if (vr_hidden_area_mesh)
+				render_tuning::hidden_area_mesh.store(vr_hidden_area_mesh->current.enabled, std::memory_order_relaxed);
 			engine_stereo_bridge::set_swap_eyes(vr_engine_swap_eyes != nullptr &&
 				vr_engine_swap_eyes->current.enabled);
 
@@ -878,6 +912,17 @@ namespace vr
 				settings::first_person_scale.default_value, settings::first_person_scale.min,
 				settings::first_person_scale.max, game::DVAR_FLAG_SAVED,
 				"First-person hands, weapons and their interaction geometry size; restart the game to apply");
+			vr_render_scale = dvars::register_float(settings::render_scale.name,
+				settings::render_scale.default_value, settings::render_scale.min,
+				settings::render_scale.max, game::DVAR_FLAG_SAVED,
+				"VR render resolution scale multiplier (0.5 to 1.2); apply with vr_reinit or restart");
+			vr_sharpening = dvars::register_float(settings::sharpening.name,
+				settings::sharpening.default_value, settings::sharpening.min,
+				settings::sharpening.max, game::DVAR_FLAG_SAVED,
+				"FidelityFX CAS sharpening strength (0.0 to 1.0); applies immediately");
+			vr_hidden_area_mesh = dvars::register_bool(settings::hidden_area_mesh.name,
+				settings::hidden_area_mesh.default_value, game::DVAR_FLAG_SAVED,
+				"Mask invisible peripheral OpenXR lens corners via depth pre-stamp; applies immediately");
 			vr_engine_swap_eyes = dvars::register_bool("vr_engineSwapEyes", false, game::DVAR_FLAG_SAVED,
 				"Swap the engine stereo left and right eye assignment; apply with vr_reinit");
 			vr_desktop_fov = dvars::register_float("vr_desktopFov", desktop_mirror::default_horizontal_fov,
@@ -935,6 +980,8 @@ namespace vr
 			engine_view_probe::set_enabled(false);
 			engine_backend_probe::set_enabled(false);
 			d3d11::detail::set_vr_present_paced(false);
+			engine_stereo_output_merger::set_post_clear_depth_hook(nullptr);
+			hidden_area_mask::invalidate_device();
 			runtime::get().shutdown();
 			disable_vr_scheduler_precision();
 			finalize_component_shutdown_if_ready();

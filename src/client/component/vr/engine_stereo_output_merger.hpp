@@ -20,6 +20,8 @@ namespace vr::engine_stereo_output_merger
 		std::uintptr_t) noexcept;
 	using depth_bind_observer_fn = void(*)(ID3D11DeviceContext*,
 		ID3D11DepthStencilView*) noexcept;
+	using post_clear_depth_hook_fn = void(*)(ID3D11DeviceContext*,
+		ID3D11DepthStencilView*, UINT, FLOAT) noexcept;
 	enum class clear_observer_channel : std::uint8_t
 	{
 		gpu_census,
@@ -222,6 +224,7 @@ namespace vr::engine_stereo_output_merger
 	// Lightweight DSV-bind observer notified when OMSetRenderTargets /
 	// OMSetRenderTargetsAndUnorderedAccessViews / ClearState changes DSV state.
 	void set_depth_bind_observer(depth_bind_observer_fn observer) noexcept;
+	void set_post_clear_depth_hook(post_clear_depth_hook_fn hook) noexcept;
 	// Optional exact-view redirection owned by the native stereo resource
 	// isolator. The callbacks must return a borrowed view and remain strict
 	// pass-through outside their active owner/eye transaction.
