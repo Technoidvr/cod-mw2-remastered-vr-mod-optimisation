@@ -1,28 +1,38 @@
-# Overlord VR (Beta 8) — Fork Optimisé par TechnoidVR
+# OptiLord — Mod VR Optimisé pour MW2 Campaign Remastered (basé sur Overlord Beta 8)
 
-Fork communautaire maintenu par **[TechnoidVR](https://github.com/Technoidvr/cod-mw2-remastered-vr-mod-optimisation)**, basé sur **Overlord VR (Beta 8)** pour *Call of Duty: Modern Warfare 2 Campaign Remastered*.
-Un grand merci à **[Aeka0](https://github.com/Aeka0)**, créateur original d'**[Overlord VR](https://github.com/Aeka0/Overlord)**, pour son travail fondateur sur ce mod VR.
+**OptiLord** est une édition VR optimisée et maintenue indépendamment par **[TechnoidVR](https://github.com/Technoidvr/cod-mw2-remastered-vr-mod-optimisation)** pour *Call of Duty: Modern Warfare 2 Campaign Remastered*, avec un versionnage dédié à partir de **`v0.1.0`** sur la base d'**Overlord VR (Beta 8)**.
+
+Un immense merci à **[Aeka0](https://github.com/Aeka0)**, créateur original d'**[Overlord VR](https://github.com/Aeka0/Overlord)**, pour son travail fondateur sans lequel ce projet n'existerait pas.
 
 ## Le projet en bref & améliorations principales
 
-L'objectif de ce fork est d'améliorer la fluidité CPU/GPU (notamment sur Ryzen & cartes AMD/NVIDIA), de réduire l'empreinte mémoire et de fiabiliser plusieurs interactions VR clés tout en restant fidèle au mod d'origine (détails techniques complets dans [OPTIMIZATIONS_FR.md](OPTIMIZATIONS_FR.md)) :
+OptiLord vise à maximiser la fluidité CPU/GPU (notamment sur Ryzen & cartes AMD/NVIDIA), réduire l'empreinte mémoire, supprimer les micro-saccades de streaming et fiabiliser les interactions VR tout en conservant la compatibilité avec la base Overlord Beta 8 (détails techniques complets dans [OPTIMIZATIONS_FR.md](OPTIMIZATIONS_FR.md) et [CHANGELOG.md](CHANGELOG.md)) :
 
-- **Performances CPU, DirectX 11 & OpenXR** : migration vers allocations paresseuses (`SizeOfImage` réduit de **282,9 Mo à 111,7 Mo** et template TLS réduit de **98,2 %**), compilation MSVC AVX2 (`/O2 /Ob3 /arch:AVX2`), suppression de relectures D3D11 redondantes par œil et d'appels COM sous verrou GPU, priorité au format swapchain HDR `R11G11B10_FLOAT`, soumission stéréo en un seul `Flush()`, résolution timer Windows `1 ms` et priorité `ABOVE_NORMAL_PRIORITY_CLASS`.
-- **Correctifs gameplay VR** : synchronisation de la capsule de collision room-scale avec le casque (passage fluide des portes sans traverser visuellement les textures), correction du holster d'épaule/dos pour les fusils d'assaut avec retour haptique synchronisé et relâchement auto de la main de soutien, zones de saisie des chargeurs à la ceinture et levier d'armement plus permissives, et launcher VR rebrandé en 9 langues.
+- **Identité dédiée & versionnage indépendant (`v0.1.0`)** : lanceur, métadonnées Windows et manifeste SteamVR (`OptiLord (Overlord VR)`) mis à jour en 9 langues avec mention claire de la base Overlord Beta 8 ; l'exécutable reste nommé **`overlord.exe`** (clé `overlord` / `overlord.vrmanifest`) pour préserver la compatibilité SteamVR.
+- **Anti-Stutters Streaming & Chargements (`v0.1.0`)** : filtrage sans verrou par *seqlock* (`watched_resources`) des vues créées par le streamer de textures en arrière-plan pour éviter les purges répétées du cache SRV stéréo, copie SEH (`__try`/`__except`) + compteur `identity_count` remplaçant les syscalls `ReadProcessMemory` dans `texture_diagnostics.cpp`, et mise en cache unique de la taille des fichiers avec mutex dans `database.cpp`.
+- **Optimisations Phase 4 (DX11 / OpenXR / HUD)** : chemin rapide `CopyResource` sans shader ni `CommandList` dans `texture_blit`, *dirty-checks* et suivi `touched_srv_stages` / `post_restore_dirty` dans `engine_stereo_eye_resources`, caches COM et fusion en un seul `CommandList` pour `spatial_panel::renderer::draw_layers()` et `native_hud_capture`.
+- **Phases 1–3 CPU, DX11, OpenXR & Mémoire** : allocations paresseuses (`SizeOfImage` réduit de **282,9 Mo à 111,7 Mo**, template TLS réduit de **98,2 %**), compilation MSVC AVX2 (`/O2 /Ob3 /arch:AVX2`), suppression des relectures D3D11 et requêtes COM redondantes par œil, priorité au format swapchain HDR `DXGI_FORMAT_R11G11B10_FLOAT`, soumission stéréo en un seul `Flush()`, timer Windows `1 ms` et priorité `ABOVE_NORMAL_PRIORITY_CLASS`.
+- **Correctifs gameplay VR** : synchronisation de la capsule de collision room-scale avec le casque (passage fluide des portes sans traverser visuellement les textures), correction du holster d'épaule/dos pour les fusils d'assaut avec retour haptique synchronisé et relâchement auto de la main de soutien, et zones de saisie des chargeurs à la ceinture et du levier d'armement plus permissives.
+
+## Tableau des versions
+
+| Version OptiLord | Base upstream | Contenu principal |
+| --- | --- | --- |
+| **`v0.1.0`** *(actuelle)* | Overlord Beta 8 | Identité **OptiLord**, anti-stutters streaming/chargements (`watched_resources` seqlock, copie SEH `texture_diagnostics`, cache taille + mutex `database.cpp`), optimisations DX11/OpenXR/HUD Phase 4 + Phases 1–3 et correctifs gameplay VR. |
 
 ## Installation rapide (5 étapes)
 
 1. Disposez d'une installation complète et légale de *Call of Duty: Modern Warfare 2 Campaign Remastered* (fermez le jeu ainsi que **MSI Afterburner** / RivaTuner).
-2. Téléchargez **`Overlord.Beta.8.Optimized.7z`** depuis la page des **[Releases](https://github.com/Technoidvr/cod-mw2-remastered-vr-mod-optimisation/releases)**.
-3. Extrayez **tout le contenu** de l'archive directement dans le dossier racine du jeu (au même niveau que `MW2CR.exe`), en conservant l'arborescence (`overlord.exe`, `openxr_loader.dll`, `h2-mod/`, `steamvr/`, `vr_input/`).
+2. Téléchargez **`OptiLord-v0.1.0.7z`** depuis la page des **[Releases](https://github.com/Technoidvr/cod-mw2-remastered-vr-mod-optimisation/releases)**.
+3. Extrayez **tout le contenu** de l'archive directement dans le dossier racine du jeu (au même niveau que `MW2CR.exe`), en conservant l'arborescence (`overlord.exe`, `openxr_loader.dll`, `overlord.vrmanifest`, `h2-mod/`, `steamvr/`, `vr_input/`). *Note : l'exécutable reste nommé **`overlord.exe`** pour garantir la compatibilité SteamVR.*
 4. Allumez votre casque VR et réveillez les deux manettes (**OpenXR** recommandé : Virtual Desktop/VDXR ou Steam Link/SteamVR ; **OpenVR** disponible en secours dans les paramètres).
 5. Lancez **`overlord.exe`**, désactivez les options à risque si nécessaire (*Shader Preloading*, *SSAA*, caches d'ombres — bouton dédié dans *Paramètres VR > Débogage* ou au pré-lancement), puis cliquez sur **Jouer** / **Campagne**.
 
 ## English Summary & Quick Install
 
-Community fork by **TechnoidVR** adding CPU/DX11 (AMD & NVIDIA)/OpenXR/memory optimizations (`SizeOfImage` 282.9 MB → 111.7 MB, `R11G11B10_FLOAT`, single-Flush stereo, 1 ms timer) and VR gameplay fixes (room-scale doorway collision sync, assault-rifle back holster bitmask + haptics, belt pouch & charging handle tolerances, updated 9-language launcher) on top of Overlord Beta 8 — huge thanks to **[Aeka0](https://github.com/Aeka0/Overlord)**. See [OPTIMIZATIONS_FR.md](OPTIMIZATIONS_FR.md) for details.
+**OptiLord** is an independently versioned (`v0.1.0+`) optimized VR edition maintained by **[TechnoidVR](https://github.com/Technoidvr/cod-mw2-remastered-vr-mod-optimisation)** for *Call of Duty: Modern Warfare 2 Campaign Remastered*, built on **Overlord Beta 8** — huge thanks to **[Aeka0](https://github.com/Aeka0/Overlord)** for creating Overlord VR. It includes Phases 1–4 CPU/DX11/OpenXR/HUD/memory optimizations (`SizeOfImage` 282.9 MB → 111.7 MB, `R11G11B10_FLOAT`, single-Flush stereo, `CopyResource` eye blit, dirty-checked isolation, merged spatial-layer command lists), `v0.1.0` anti-stutter streaming/loading fixes (lock-free seqlock resource watch, SEH copy in texture diagnostics, cached Bnet file sizes with mutex synchronization), and VR gameplay fixes (room-scale doorway collision sync, assault-rifle back holster + haptics, belt pouch & charging handle tolerances, 9-language launcher). See [OPTIMIZATIONS_FR.md](OPTIMIZATIONS_FR.md) and [CHANGELOG.md](CHANGELOG.md).
 
-**Quick Install:** Download `Overlord.Beta.8.Optimized.7z` from **[Releases](https://github.com/Technoidvr/cod-mw2-remastered-vr-mod-optimisation/releases)** → extract into your legal *MW2 Campaign Remastered* root folder (beside `MW2CR.exe`, keeping `overlord.exe`, `openxr_loader.dll`, `h2-mod/`, `steamvr/`, `vr_input/`) → wake headset & controllers (OpenXR recommended; close MSI Afterburner) → run `overlord.exe`, disable risky settings (*Shader Preloading*, *SSAA*, shadow caches), and click **Play**.
+**Quick Install:** Download `OptiLord-v0.1.0.7z` from **[Releases](https://github.com/Technoidvr/cod-mw2-remastered-vr-mod-optimisation/releases)** → extract into your legal *MW2 Campaign Remastered* root folder (beside `MW2CR.exe`, keeping `overlord.exe`, `openxr_loader.dll`, `overlord.vrmanifest`, `h2-mod/`, `steamvr/`, `vr_input/` — note that `overlord.exe` keeps its filename for SteamVR compatibility) → wake headset & controllers (OpenXR recommended; close MSI Afterburner) → run `overlord.exe`, disable risky settings (*Shader Preloading*, *SSAA*, shadow caches), and click **Play**.
 
 ---
 

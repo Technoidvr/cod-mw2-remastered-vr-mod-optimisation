@@ -4,7 +4,7 @@
 
 namespace product
 {
-	inline constexpr auto name = "Overlord";
+	inline constexpr auto name = "OptiLord";
 #ifdef _DEBUG
 	inline constexpr auto application_key = "overlord.debug";
 	inline constexpr auto application_manifest = L"overlord-debug.vrmanifest";

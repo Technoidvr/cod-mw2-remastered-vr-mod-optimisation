@@ -10,7 +10,11 @@
 #include "utils/hook.hpp"
 #include "utils/hook_validation.hpp"
 
+#include <algorithm>
+#include <array>
 #include <atomic>
+#include <cstddef>
+#include <cstdint>
 #include <mutex>
 #include <type_traits>
 
@@ -109,6 +113,11 @@ namespace vr::engine_stereo_eye_resources
 		std::atomic_bool device_view_hooks_installed{};
 		std::atomic_uint64_t view_creation_epoch{1};
 		std::uint64_t last_foreign_clear_epoch{};
+		constexpr std::size_t watched_resource_capacity =
+			isolated_target_count * (1 + auxiliary_scene::view_count);
+		std::array<std::atomic_uintptr_t, watched_resource_capacity> watched_resources{};
+		std::atomic_size_t watched_resource_count{};
+		std::atomic_uint64_t watched_resources_seq{};
 		std::mutex hook_mutex;
 		std::mutex state_mutex;
 		std::atomic_bool hooks_installed{};
@@ -392,6 +401,51 @@ namespace vr::engine_stereo_eye_resources
 				clear_foreign_caches();
 				last_foreign_clear_epoch = observed;
 			}
+		}
+
+		void publish_watched_resources() noexcept
+		{
+			watched_resources_seq.fetch_add(1, std::memory_order_acq_rel);
+			std::size_t count{};
+			const auto push = [&](ID3D11Resource* const resource) noexcept
+			{
+				if (resource != nullptr && count < watched_resource_capacity)
+				{
+					watched_resources[count++].store(
+						reinterpret_cast<std::uintptr_t>(resource),
+						std::memory_order_relaxed);
+				}
+			};
+			for (const auto& target : resources.targets)
+			{
+				push(static_cast<ID3D11Resource*>(target.original.Get()));
+				for (const auto& eye : target.eyes)
+					push(static_cast<ID3D11Resource*>(eye.Get()));
+			}
+			for (std::size_t index{count}; index < watched_resource_capacity; ++index)
+				watched_resources[index].store(0, std::memory_order_relaxed);
+			watched_resource_count.store(count, std::memory_order_relaxed);
+			watched_resources_seq.fetch_add(1, std::memory_order_release);
+			view_creation_epoch.fetch_add(1, std::memory_order_release);
+		}
+
+		[[nodiscard]] bool is_watched_resource(
+			ID3D11Resource* const resource) noexcept
+		{
+			if (resource == nullptr) return true;
+			const auto seq1 = watched_resources_seq.load(std::memory_order_acquire);
+			if ((seq1 & 1u) != 0) return true;
+			const auto count = (std::min)(
+				watched_resource_count.load(std::memory_order_relaxed),
+				watched_resource_capacity);
+			const auto ptr = reinterpret_cast<std::uintptr_t>(resource);
+			for (std::size_t index{}; index < count; ++index)
+			{
+				if (watched_resources[index].load(std::memory_order_relaxed) == ptr)
+					return true;
+			}
+			std::atomic_thread_fence(std::memory_order_acquire);
+			return watched_resources_seq.load(std::memory_order_relaxed) != seq1;
 		}
 
 		enum class target_resource_match : std::uint8_t
@@ -1340,7 +1394,7 @@ namespace vr::engine_stereo_eye_resources
 				device_view_hooks[Index].get_original());
 			if (original == nullptr) return E_UNEXPECTED;
 			const auto result = original(device, resource, desc, view);
-			if (SUCCEEDED(result) && view != nullptr)
+			if (SUCCEEDED(result) && view != nullptr && is_watched_resource(resource))
 			{
 				view_creation_epoch.fetch_add(1, std::memory_order_release);
 			}
@@ -1529,18 +1583,21 @@ namespace vr::engine_stereo_eye_resources
 				}
 			}
 			resources = std::move(replacement);
+			publish_watched_resources();
 			clear_all_caches();
 			for (std::uint32_t index{}; index < resources.targets.size(); ++index)
 			{
 				if (!append_owner_view_mapping(index))
 				{
 					resources = {};
+					publish_watched_resources();
 					resources_ready.store(false, std::memory_order_release);
 					last_failure.store(failure::view_creation,
 						std::memory_order_release);
 					return false;
 				}
 			}
+			last_foreign_clear_epoch = view_creation_epoch.load(std::memory_order_acquire);
 			resources.ready = true;
 			resources_ready.store(true, std::memory_order_release);
 			resource_rebuilds.fetch_add(1, std::memory_order_relaxed);
@@ -1578,6 +1635,7 @@ namespace vr::engine_stereo_eye_resources
 		{
 			if (pair_active.load(std::memory_order_acquire)) return false;
 			resources = {};
+			publish_watched_resources();
 			last_foreign_clear_epoch = 0;
 			post_restore_dirty.store(true, std::memory_order_release);
 			resources_ready.store(false, std::memory_order_release);
@@ -1894,10 +1952,21 @@ namespace vr::engine_stereo_eye_resources
 		{
 			// Grow only the auxiliary mapping. Existing HMD images, views and
 			// histories keep their identities when the first scope is raised.
+			bool created{};
 			for(auto& target:resources.targets)
-				if(target.original && !target.eyes[auxiliary_scene::view_index] &&
-					FAILED(resources.device->CreateTexture2D(&target.description,nullptr,
-						target.eyes[auxiliary_scene::view_index].GetAddressOf()))) return false;
+			{
+				if(target.original && !target.eyes[auxiliary_scene::view_index])
+				{
+					if(FAILED(resources.device->CreateTexture2D(&target.description,nullptr,
+						target.eyes[auxiliary_scene::view_index].GetAddressOf())))
+					{
+						if(created) publish_watched_resources();
+						return false;
+					}
+					created=true;
+				}
+			}
+			if(created) publish_watched_resources();
 			return extend_auxiliary_views(resources.render_targets) && extend_auxiliary_views(resources.depth_stencils) &&
 				extend_auxiliary_views(resources.shader_resources) && extend_auxiliary_views(resources.unordered_access);
 		}

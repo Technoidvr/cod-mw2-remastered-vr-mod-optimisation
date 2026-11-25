@@ -148,7 +148,7 @@ export default function App() {
     return (
       <div className="launcher-shell">
         <header className="app-header">
-          <span className="brand">Overlord</span>
+          <span className="brand">OptiLord</span>
           <WindowControls
             t={t}
             onError={(error) => setError(errorKey(error))}
@@ -214,7 +214,7 @@ function Launcher({ data }: { data: Bootstrap }) {
     if (!data.renderProbe) return;
     void Promise.all([
       document.fonts.load('15px "HModMix-Medium"', "OpenXR 123"),
-      document.fonts.load('18px "HModMixGothic-Regular"', "OVERLORD"),
+      document.fonts.load('18px "HModMixGothic-Regular"', "OPTILORD"),
     ])
       .then(async (fonts) => {
         const declaration = inspectStartupNotice(data.version);
@@ -597,7 +597,7 @@ function Launcher({ data }: { data: Bootstrap }) {
     <div className="launcher-shell">
       <header className="app-header">
         <span className="brand">{data.product}</span>
-        <span className="build-label">{data.version} · TechnoidVR Fork</span>
+        <span className="build-label">v{data.version} · Based on Overlord Beta 8</span>
         <WindowControls
           t={t}
           onError={(error) => setNotice({ key: errorKey(error), error: true })}
