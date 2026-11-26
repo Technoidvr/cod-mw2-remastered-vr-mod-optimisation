@@ -4,6 +4,32 @@ All notable changes in **OptiLord** (maintained by **TechnoidVR**, based on **Ov
 
 ---
 
+## [0.5.0] — OptiLord (Clean 1-Click Installer & Uninstaller)
+
+### Clean Self-Extracting Installer & Uninstaller (`v0.5.0`)
+- **MW2CR Game Directory Auto-Detection & Inspection (`tools/installer/game_paths.hpp`)**:
+  - Added `is_valid_game_dir()`, `detect_game_directories()`, and `inspect_installation()` in `namespace optilord_installer` to locate and deduplicate valid MW2CR folders (`MW2CR.exe` or `h2_sp64_bnet_ship.exe`) from `HKCU\Software\OptiLord\InstallDir`, 64-bit/WOW6432Node/HKCU Windows Uninstall registry keys (`InstallLocation` & `DisplayIcon`), `%APPDATA%\Battle.net\Battle.net.config` (`Client.Install.DefaultInstallPath`), all `DRIVE_FIXED` library folders (Program Files, Games, Battle.net, Blizzard, Epic/Epic Games, SteamLibrary, drive root), plus current working directory and executable parent directory.
+  - Detects legacy or stale Overlord/OptiLord installs (`overlord.pdb`, `overlord-debug.exe`/`overlord-debug.pdb`, missing `optilord-install-manifest.json`, or missing/legacy `version.json`) so upgrades always trigger a clean replacement.
+- **Safe Clean-Upgrade Engine, PE Stub Trimming & Uninstaller (`tools/installer/install_engine.hpp`)**:
+  - `find_running_game_processes()` blocks install/uninstall while `overlord.exe`, `overlord-debug.exe`, `mw2cr.exe`, or `h2_sp64_bnet_ship.exe` is running.
+  - `safe_relative_zip_path()`, `is_protected_game_path()`, and `has_reparse_component()` prevent Zip-Slip traversal, Windows reserved names, junction/symlink extraction, and accidental writes/deletes inside `MW2CR.exe`, `h2_sp64_bnet_ship.exe`, `MW2CR Launcher.exe`, `Data/`, `main/`, `players2/`, `.battle.net/`, or `mods/`.
+  - `clean_mod_files()` removes manifest-tracked files (`optilord-install-manifest.json`), known legacy/mod root artifacts (`overlord.exe`, `overlord-debug.exe`, `overlord.pdb`, `overlord-debug.pdb`, `openxr_loader.dll`, `overlord.vrmanifest`, `release-info.json`, `version.json`, docs/licenses), and mod subdirectories (`h2-mod/`, `steamvr/`, `vr_input/`, `licenses/`, `docs/`) before installation while preserving `players2/` saves, game files, and (unless explicitly requested) `diagnose/` / `minidumps/`.
+  - `install_mod()` streams ZIP entries in 64 KB chunks via `minizip` (`unzOpen2_64` + `fill_win32_filefunc64W`), validates `overlord.exe` (`> 1 MB`) and `version.json`, writes `optilord-install-manifest.json`, trims the PE image with `compute_pe_image_file_size()` to emit a lightweight `OptiLord-Uninstall.exe` without the appended ZIP payload, registers `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\OptiLordVR` + `HKCU\Software\OptiLord`, and optionally creates the `OptiLord VR.lnk` Desktop shortcut via `IShellLinkW`.
+  - `uninstall_mod()` removes mod artifacts, `HKCU` registry keys, and Desktop shortcut, spawning a detached hidden `cmd.exe` self-delete when executed directly from `OptiLord-Uninstall.exe`.
+- **Win32 Dual GUI/CLI Application & Manifest (`tools/installer/optilord_installer.cpp`, `tools/installer/optilord_installer.rc`, `tools/installer/optilord_installer.manifest`)**:
+  - Added DPI-aware (`PerMonitorV2`, Common Controls v6, `asInvoker`) bilingual Win32 GUI (auto-selecting French or English from `GetUserDefaultUILanguage()`) with `IFileOpenDialog` folder browsing, live status feedback, Desktop shortcut & optional diagnostics-removal checkboxes, async worker thread with `WM_APP` progress/log updates, and **Install / Clean Update**, **Uninstall**, **Launch OptiLord**, and **Close** actions.
+  - Added CLI modes (`--detect`, `--status <dir>`, `--install <dir> [--payload <zip>] [--no-registry] [--no-shortcut]`, `--uninstall <dir> [--no-registry] [--remove-diagnostics]`, `--uninstall-ui [<dir>]`, `--help`) with safe parent-console/pipe handling (`AttachConsole(ATTACH_PARENT_PROCESS)` when stdio is `FILE_TYPE_UNKNOWN`).
+
+### Build Packaging, Verification & Documentation (`v0.5.0`)
+- **Installer Build & Bundling (`tools/build_installer.py`)**:
+  - Locates `vcvars64.bat` (`vswhere.exe` fallback), builds `optilord_installer.rc` and `optilord_installer.cpp` (`/std:c++20 /W4 /WX /MT`) against `minizip.lib` and `zlib.lib` into `OptiLord-Setup-Stub.exe`, and optionally packages a filtered `ZIP_DEFLATED` payload (excluding `.pdb`, `release-info.json`, `thumbs.db`, `.ds_store`) appended into a self-extracting Setup EXE verified with `zipfile.is_zipfile()`.
+- **End-to-End Installer Test Suite (`tests/vr/test_installer.py`)**:
+  - Added automated sandbox tests verifying `--detect`, invalid directory rejection, stale-install detection (`legacy_or_stale=1`), clean upgrade purging stale files while preserving byte-identical `MW2CR.exe`, `players2/save_01.bin`, `Data/cas_01.dat`, and `diagnose/keep_me.log`, trimmed `< 2 MB` non-ZIP `OptiLord-Uninstall.exe`, post-install `--status` (`installed=1`, `legacy_or_stale=0`, `version=0.5.0`), and self-deleting `--uninstall`.
+- **Versioning & Docs (`version.json`, `README.md`, `CHANGELOG.md`, `OPTIMIZATIONS.md`, `OPTIMIZATIONS_FR.md`)**:
+  - Bumped `version.json` to `"0.5.0"` (`file_version: [0, 5, 0, 0]`, `prerelease: true`), updated `README.md` top highlights/version history/Quick Install Guide (1-Click Setup EXE + Manual 7z archive) for `v0.5.0`, added `[0.5.0]` to `CHANGELOG.md`, and appended Section 11 to `OPTIMIZATIONS.md` and `OPTIMIZATIONS_FR.md`.
+
+---
+
 ## [0.4.0] — OptiLord (CPU Contention & Frame Pacing)
 
 ### Lock-Free VR Runtime State & Renderer Maintenance (`v0.4.0`)

@@ -119,3 +119,25 @@ This document details the performance optimizations (CPU, GPU, Memory, D3D11, Op
 - **Zero-Observer Resource-Ops Fast-Path (`src/client/component/vr/engine_stereo_resource_ops.cpp`)**:
   - Added `record_call_if_no_observers()` checking `active_observer_mask.load(std::memory_order_acquire) == 0`, preserving `expected_context == 0` filtering, `foreign_context_calls`, and `calls[index(operation)]` accounting identically before avoiding `publish()`.
   - Invoked across all 8 resource-operation stubs (`CopySubresourceRegion`, `CopyResource`, `UpdateSubresource`, `CopyStructureCount`, `ClearUnorderedAccessViewUint`, `ClearUnorderedAccessViewFloat`, `GenerateMips`, `ResolveSubresource`) to skip `_ReturnAddress()` capture and 80-byte `event` struct construction across **500,000+ D3D11 copy/update calls** when no observer is active.
+
+## 11. OptiLord v0.5.0 — Clean Installer & Uninstaller
+- **Multi-Source MW2CR Auto-Detection (`tools/installer/game_paths.hpp`)**:
+  - `detect_game_directories()` gathers, normalizes (`normalize_candidate_path()`), validates (`is_valid_game_dir()` requiring `MW2CR.exe` or `h2_sp64_bnet_ship.exe`), and case-insensitively deduplicates game paths across five sources:
+    1. Previous install path in `HKCU\Software\OptiLord` (`InstallDir`).
+    2. Windows Uninstall registry keys (`HKLM\SOFTWARE\WOW6432Node\...`, `HKLM\SOFTWARE\...`, `HKCU\SOFTWARE\...`) matching MW2CR `DisplayName` entries via `InstallLocation` and `DisplayIcon`.
+    3. Battle.net client configuration JSON (`%APPDATA%\Battle.net\Battle.net.config` -> `Client.Install.DefaultInstallPath`).
+    4. All fixed logical drives (`GetLogicalDriveStringsW()` + `DRIVE_FIXED`) across standard Battle.net, Blizzard, Epic/Epic Games, SteamLibrary (`steamapps\common\...`), `Program Files`, `Games`, and drive-root folders.
+    5. Current working directory and installer executable parent directory.
+- **Zip-Slip & Reparse-Point Path Sanitization (`tools/installer/install_engine.hpp`)**:
+  - `safe_relative_zip_path()` enforces strict relative paths before any extraction or manifest cleanup: rejects empty names, leading/trailing `/` or `\`, ASCII control characters (`< 0x20`, `0x7f`), drive colons and invalid Windows filename chars (`< > " | ? *`), empty/`.`/`..` path segments, trailing dots/spaces, and Windows reserved device names (`CON`, `PRN`, `AUX`, `NUL`, `COM1`–`COM9`, `LPT1`–`LPT9`).
+  - `has_reparse_component()` / `is_reparse_point()` rejects traversing or writing across symbolic links or directory junctions (`FILE_ATTRIBUTE_REPARSE_POINT`).
+- **Pre-Upgrade Stale-Binary Purge (`clean_mod_files()`, `inspect_installation()`)**:
+  - Eliminates stale-binary and mixed-resource crashes when upgrading from earlier Overlord or OptiLord releases (e.g., lingering `overlord.pdb`, `overlord-debug.exe`, `h2-mod/`, `steamvr/`, `vr_input/`, or untracked files from older archives).
+  - Refuses to proceed if `find_running_game_processes()` detects `overlord.exe`, `overlord-debug.exe`, `mw2cr.exe`, or `h2_sp64_bnet_ship.exe`, then removes prior `optilord-install-manifest.json` entries, known mod root files, and mod-only subdirectories (`h2-mod`, `steamvr`, `vr_input`, `licenses`, `docs`) prior to atomic 64 KB `.tmp` + rename ZIP extraction (`unzOpen2_64`).
+- **PE Stub Trimming for `OptiLord-Uninstall.exe` (`compute_pe_image_file_size()`)**:
+  - The self-extracting `OptiLord-v0.5.0-Setup.exe` stores its `ZIP_DEFLATED` payload appended right after the compiled Win32 PE stub (`tools/build_installer.py`).
+  - During `install_mod()`, `compute_pe_image_file_size()` parses `IMAGE_DOS_HEADER::e_lfanew`, `IMAGE_NT_SIGNATURE`, optional header `SizeOfHeaders`, and `max(PointerToRawData + SizeOfRawData)` across all `IMAGE_SECTION_HEADER` entries, copying only the exact PE image bytes `[0 .. pe_size)` into `OptiLord-Uninstall.exe` (`< 2 MB`, no appended ZIP payload).
+  - When `OptiLord-Uninstall.exe` runs directly from the game directory, `uninstall_mod()` spawns a detached hidden `cmd.exe` (`CREATE_NO_WINDOW`) from `System32` to delete the uninstaller binary after exit so zero locks remain.
+- **Game Data & Save-File (`players2/`) Protection (`is_protected_game_path()`)**:
+  - `is_protected_game_path()` and `is_protected_top_dir_name()` strictly guard `MW2CR.exe`, `h2_sp64_bnet_ship.exe`, `MW2CR Launcher.exe`, `Data/`, `main/`, `players2/`, `.battle.net/`, and `mods/` against both ZIP extraction and manifest/cleanup deletion.
+  - `diagnose/` and `minidumps/` are likewise preserved across upgrades and uninstalls unless `remove_diagnostics` / `--remove-diagnostics` is explicitly checked, verified end-to-end by `tests/vr/test_installer.py`.
