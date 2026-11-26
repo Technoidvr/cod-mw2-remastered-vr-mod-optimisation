@@ -125,6 +125,16 @@ namespace vr
 			}
 		}
 
+		void boost_critical_vr_thread_priority() noexcept
+		{
+			thread_local bool boosted{};
+			if (!boosted)
+			{
+				boosted = true;
+				SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
+			}
+		}
+
 
 		void post_clear_depth_hidden_area(ID3D11DeviceContext* const context,
 			ID3D11DepthStencilView* const view, const UINT flags, const FLOAT depth) noexcept
@@ -229,6 +239,8 @@ namespace vr
 				return;
 			}
 
+			boost_critical_vr_thread_priority();
+
 			// Keep continuous observation alive independently of the one-shot evidence.
 			// The unchanged-entry path only reads the vtable and atomic owner identity.
 			if (event.graphics)
@@ -279,6 +291,7 @@ namespace vr
 		{
 			if (is_accepting_work())
 			{
+				boost_critical_vr_thread_priority();
 				diagnostics::record_renderer_frame();
 				if (vr_sharpening)
 					render_tuning::sharpening.store(vr_sharpening->current.value, std::memory_order_relaxed);

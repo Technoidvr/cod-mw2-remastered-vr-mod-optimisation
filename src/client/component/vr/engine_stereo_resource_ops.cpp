@@ -65,16 +65,32 @@ namespace vr::engine_stereo_resource_ops
 			return static_cast<std::size_t>(value);
 		}
 
-		void publish(const event& value) noexcept
+		[[nodiscard]] inline bool record_expected_call(const api operation,
+			ID3D11DeviceContext* const context) noexcept
 		{
 			const auto expected = expected_context.load(std::memory_order_acquire);
-			if (expected == 0) return;
-			if (reinterpret_cast<std::uintptr_t>(value.context) != expected)
+			if (expected == 0) return false;
+			if (reinterpret_cast<std::uintptr_t>(context) != expected)
 			{
 				foreign_context_calls.fetch_add(1, std::memory_order_relaxed);
-				return;
+				return false;
 			}
-			calls[index(value.operation)].fetch_add(1, std::memory_order_relaxed);
+			calls[index(operation)].fetch_add(1, std::memory_order_relaxed);
+			return true;
+		}
+
+		[[nodiscard]] inline bool record_call_if_no_observers(const api operation,
+			ID3D11DeviceContext* const context) noexcept
+		{
+			if (active_observer_mask.load(std::memory_order_acquire) != 0)
+				return false;
+			(void)record_expected_call(operation, context);
+			return true;
+		}
+
+		void publish(const event& value) noexcept
+		{
+			if (!record_expected_call(value.operation, value.context)) return;
 			auto mask = active_observer_mask.load(std::memory_order_acquire);
 			unsigned long slot{};
 			while (_BitScanForward(&slot, mask))
@@ -108,10 +124,13 @@ namespace vr::engine_stereo_resource_ops
 			}
 			original(context, effective_destination, destination_subresource, destination_x,
 				destination_y, destination_z, effective_source, source_subresource, source_box);
-			publish({api::copy_subresource_region, context, effective_destination,
-				effective_source, nullptr,
-				reinterpret_cast<std::uintptr_t>(_ReturnAddress()),
-				destination_subresource, source_subresource});
+			if (!record_call_if_no_observers(api::copy_subresource_region, context))
+			{
+				publish({api::copy_subresource_region, context, effective_destination,
+					effective_source, nullptr,
+					reinterpret_cast<std::uintptr_t>(_ReturnAddress()),
+					destination_subresource, source_subresource});
+			}
 		}
 
 		void __stdcall copy_resource_stub(ID3D11DeviceContext* const context,
@@ -130,9 +149,12 @@ namespace vr::engine_stereo_resource_ops
 					effective_source = rewrite(context, source, access::read);
 			}
 			original(context, effective_destination, effective_source);
-			publish({api::copy_resource, context, effective_destination,
-				effective_source, nullptr,
-				reinterpret_cast<std::uintptr_t>(_ReturnAddress())});
+			if (!record_call_if_no_observers(api::copy_resource, context))
+			{
+				publish({api::copy_resource, context, effective_destination,
+					effective_source, nullptr,
+					reinterpret_cast<std::uintptr_t>(_ReturnAddress())});
+			}
 		}
 
 		void __stdcall update_subresource_stub(ID3D11DeviceContext* const context,
@@ -151,11 +173,14 @@ namespace vr::engine_stereo_resource_ops
 			}
 			original(context, effective_destination, destination_subresource, destination_box,
 				source_data, source_row_pitch, source_depth_pitch);
-			publish({api::update_subresource, context, effective_destination,
-				nullptr, nullptr,
-				reinterpret_cast<std::uintptr_t>(_ReturnAddress()), destination_subresource,
-				0, source_data, destination_box, source_row_pitch,
-				source_depth_pitch});
+			if (!record_call_if_no_observers(api::update_subresource, context))
+			{
+				publish({api::update_subresource, context, effective_destination,
+					nullptr, nullptr,
+					reinterpret_cast<std::uintptr_t>(_ReturnAddress()), destination_subresource,
+					0, source_data, destination_box, source_row_pitch,
+					source_depth_pitch});
+			}
 		}
 
 		void __stdcall copy_structure_count_stub(ID3D11DeviceContext* const context,
@@ -172,9 +197,12 @@ namespace vr::engine_stereo_resource_ops
 				effective_source = rewrite(context, source, access::read);
 			}
 			original(context, destination, destination_offset, effective_source);
-			publish({api::copy_structure_count, context, destination, nullptr,
-				effective_source,
-				reinterpret_cast<std::uintptr_t>(_ReturnAddress()), destination_offset});
+			if (!record_call_if_no_observers(api::copy_structure_count, context))
+			{
+				publish({api::copy_structure_count, context, destination, nullptr,
+					effective_source,
+					reinterpret_cast<std::uintptr_t>(_ReturnAddress()), destination_offset});
+			}
 		}
 
 		void __stdcall clear_uav_uint_stub(ID3D11DeviceContext* const context,
@@ -190,8 +218,11 @@ namespace vr::engine_stereo_resource_ops
 				effective_view = rewrite(context, view, access::write);
 			}
 			original(context, effective_view, values);
-			publish({api::clear_uav_uint, context, nullptr, nullptr, effective_view,
-				reinterpret_cast<std::uintptr_t>(_ReturnAddress())});
+			if (!record_call_if_no_observers(api::clear_uav_uint, context))
+			{
+				publish({api::clear_uav_uint, context, nullptr, nullptr, effective_view,
+					reinterpret_cast<std::uintptr_t>(_ReturnAddress())});
+			}
 		}
 
 		void __stdcall clear_uav_float_stub(ID3D11DeviceContext* const context,
@@ -207,8 +238,11 @@ namespace vr::engine_stereo_resource_ops
 				effective_view = rewrite(context, view, access::write);
 			}
 			original(context, effective_view, values);
-			publish({api::clear_uav_float, context, nullptr, nullptr, effective_view,
-				reinterpret_cast<std::uintptr_t>(_ReturnAddress())});
+			if (!record_call_if_no_observers(api::clear_uav_float, context))
+			{
+				publish({api::clear_uav_float, context, nullptr, nullptr, effective_view,
+					reinterpret_cast<std::uintptr_t>(_ReturnAddress())});
+			}
 		}
 
 		void __stdcall generate_mips_stub(ID3D11DeviceContext* const context,
@@ -224,8 +258,11 @@ namespace vr::engine_stereo_resource_ops
 				effective_view = rewrite(context, view, access::write);
 			}
 			original(context, effective_view);
-			publish({api::generate_mips, context, nullptr, nullptr, effective_view,
-				reinterpret_cast<std::uintptr_t>(_ReturnAddress())});
+			if (!record_call_if_no_observers(api::generate_mips, context))
+			{
+				publish({api::generate_mips, context, nullptr, nullptr, effective_view,
+					reinterpret_cast<std::uintptr_t>(_ReturnAddress())});
+			}
 		}
 
 		void __stdcall resolve_subresource_stub(ID3D11DeviceContext* const context,
@@ -247,10 +284,13 @@ namespace vr::engine_stereo_resource_ops
 			}
 			original(context, effective_destination, destination_subresource, effective_source,
 				source_subresource, format);
-			publish({api::resolve_subresource, context, effective_destination,
-				effective_source, nullptr,
-				reinterpret_cast<std::uintptr_t>(_ReturnAddress()),
-				destination_subresource, source_subresource});
+			if (!record_call_if_no_observers(api::resolve_subresource, context))
+			{
+				publish({api::resolve_subresource, context, effective_destination,
+					effective_source, nullptr,
+					reinterpret_cast<std::uintptr_t>(_ReturnAddress()),
+					destination_subresource, source_subresource});
+			}
 		}
 
 		std::array<utils::hook::detour*, api_count> hooks() noexcept

@@ -222,6 +222,7 @@ namespace vr::openxr
 				auto_initialize_allowed_ = true;
 			}
 			status_.desired_enabled = enabled;
+			desired_enabled_atomic_.store(enabled, std::memory_order_release);
 			publish_status_locked();
 		}
 
@@ -412,6 +413,7 @@ namespace vr::openxr
 		{
 			const wait_timing::scoped_lock lock(mutex_, wait_timing::site::xr_other);
 			status_.desired_enabled = false;
+			desired_enabled_atomic_.store(false, std::memory_order_release);
 			status_.reinitialize_pending = false;
 			(void)teardown_locked(true);
 			publish_status_locked();
@@ -425,14 +427,12 @@ namespace vr::openxr
 
 		bool requested_enabled() const
 		{
-			const wait_timing::scoped_lock lock(mutex_, wait_timing::site::xr_other);
-			return status_.desired_enabled;
+			return desired_enabled_atomic_.load(std::memory_order_acquire);
 		}
 
 		bool applied_enabled() const
 		{
-			const wait_timing::scoped_lock lock(mutex_, wait_timing::site::xr_enabled);
-			return status_.applied_enabled;
+			return applied_enabled_atomic_.load(std::memory_order_acquire);
 		}
 
 		bool is_session_running() const noexcept
@@ -477,6 +477,8 @@ namespace vr::openxr
 			status_snapshot_ = status_;
 			session_running_atomic_.store(status_.applied_enabled && status_.session_running,
 			                              std::memory_order_release);
+			desired_enabled_atomic_.store(status_.desired_enabled, std::memory_order_release);
+			applied_enabled_atomic_.store(status_.applied_enabled, std::memory_order_release);
 		}
 
 		void publish_progress_locked(const char* const stage, const std::string& operation)
@@ -1004,6 +1006,7 @@ namespace vr::openxr
 			status_.graphics_transport = "h2_device_openxr";
 			status_.native_renderer_ready = false;
 			status_.applied_enabled = true;
+			applied_enabled_atomic_.store(true, std::memory_order_release);
 			status_.reinitialize_pending = false;
 			status_.state = runtime_state::session_idle;
 			publish_progress_locked("complete", "initialization complete");
@@ -1051,6 +1054,7 @@ namespace vr::openxr
 			                                 result_name(result));
 			set_result(result);
 			status_.applied_enabled = false;
+			applied_enabled_atomic_.store(false, std::memory_order_release);
 			publish_status_locked();
 			return false;
 		}
@@ -1123,6 +1127,7 @@ namespace vr::openxr
 				status_.applied_enabled = false;
 				status_.session_running = false;
 				session_running_atomic_.store(false, std::memory_order_release);
+				applied_enabled_atomic_.store(false, std::memory_order_release);
 				perf_settings_supported_ = false;
 				visibility_mask_supported_ = false;
 				scene_width_ = 0;
@@ -1137,6 +1142,7 @@ namespace vr::openxr
 			compositor_.invalidate();
 			capture_.invalidate(status_.device_generation);
 			status_.applied_enabled = false;
+			applied_enabled_atomic_.store(false, std::memory_order_release);
 			if (graphics_ && !openxr::wait_for_gpu_idle(
 			                     graphics_.device.Get(), graphics_.context.Get(), status_.last_error))
 				return teardown_failure("D3D11 GPU idle wait", XR_ERROR_RUNTIME_FAILURE);
@@ -2070,6 +2076,8 @@ namespace vr::openxr
 		std::uint64_t initialization_generation_{};
 		std::atomic_uint64_t resize_generation_{};
 		std::atomic_bool session_running_atomic_{};
+		std::atomic_bool desired_enabled_atomic_{};
+		std::atomic_bool applied_enabled_atomic_{};
 		mutable std::mutex status_mutex_;
 		runtime_status status_snapshot_{runtime_state::disabled, true};
 	};
@@ -2084,6 +2092,7 @@ namespace vr::openxr
 		void set_desired_enabled(bool value)
 		{
 			status_.desired_enabled = value;
+			desired_enabled_atomic_.store(value, std::memory_order_release);
 		}
 		void set_scene_mode(scene_mode mode)
 		{
@@ -2130,6 +2139,7 @@ namespace vr::openxr
 		{
 			status_.state = runtime_state::disabled;
 			status_.applied_enabled = false;
+			applied_enabled_atomic_.store(false, std::memory_order_release);
 		}
 		bool shutdown_complete() const noexcept
 		{
@@ -2137,11 +2147,11 @@ namespace vr::openxr
 		}
 		bool requested_enabled() const
 		{
-			return status_.desired_enabled;
+			return desired_enabled_atomic_.load(std::memory_order_acquire);
 		}
 		bool applied_enabled() const
 		{
-			return false;
+			return applied_enabled_atomic_.load(std::memory_order_acquire);
 		}
 		bool is_session_running() const noexcept
 		{
@@ -2154,6 +2164,8 @@ namespace vr::openxr
 
 	  private:
 		runtime_status status_{};
+		std::atomic_bool desired_enabled_atomic_{};
+		std::atomic_bool applied_enabled_atomic_{};
 	};
 #endif
 

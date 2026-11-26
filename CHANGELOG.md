@@ -4,6 +4,29 @@ All notable changes in **OptiLord** (maintained by **TechnoidVR**, based on **Ov
 
 ---
 
+## [0.4.0] — OptiLord (CPU Contention & Frame Pacing)
+
+### Lock-Free VR Runtime State & Renderer Maintenance (`v0.4.0`)
+- **Lock-free state queries & capture polling (`src/client/component/vr/runtime_backend.cpp`, `src/client/component/vr/openxr_runtime.cpp`, `src/client/component/vr/openvr_runtime.cpp`)**:
+  - Added `desired_enabled_atomic_` and `applied_enabled_atomic_` (`std::atomic_bool`) alongside `session_running_atomic_` in `openxr_runtime.cpp` and `openvr_runtime.cpp`, kept synchronized in `publish_status_locked()` and across every status transition (`set_desired_enabled`, `initialize`, `teardown_locked`, `shutdown`, and disabled fallback paths) so `requested_enabled()` and `applied_enabled()` read via `std::memory_order_acquire` without acquiring `mutex_`.
+  - Removed `mutex_` locking in both `runtime_backend::implementation` and `runtime_backend` for `requested_enabled()`, `applied_enabled()`, and `poll_capture()` in `runtime_backend.cpp` (preserving `choice_.valid` checks in `poll_capture()` / `applied_enabled()` and keeping `on_present`, `on_present_post`, `initialize`, and `shutdown` synchronized).
+  - Eliminates the measured **`1.0–4.5 ms` (max `87.5 ms`)** Frontend/Renderer stalls observed in `vr_debugWaitTiming` where `scheduler::r_end_frame_stub()` (`runtime.facade.enabled`) waited behind the Present thread holding `mutex_` across `xrWaitFrame`.
+- **Mock lifecycle verification (`tests/vr/mock_smoke.cpp`)**:
+  - Extended `run_happy_path()` to assert `requested_enabled()`, `applied_enabled()`, and `poll_capture()` across fresh construction, initialization, active frames, `set_desired_enabled(false)`, re-enable, and `shutdown()`, and added `expect_facade_lockfree_queries()` covering `vr::runtime_backend`.
+
+### Critical VR Thread Scheduling & Zero-Observer Resource-Ops Fast-Path (`v0.4.0`)
+- **One-time VR thread priority pinning (`src/client/component/vr/vr_component.cpp`)**:
+  - Added `boost_critical_vr_thread_priority()` (`thread_local` guard calling `SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL)` once per thread) invoked in `on_present_pre()` (Present/Backend/OpenXR owner thread) and `on_renderer_frame()` (Renderer/Frontend thread), complementing process-level `ABOVE_NORMAL_PRIORITY_CLASS` and `1 ms` timer resolution.
+- **Zero-observer D3D11 resource-ops fast-path (`src/client/component/vr/engine_stereo_resource_ops.cpp`)**:
+  - Added `record_call_if_no_observers()` checking `active_observer_mask.load(std::memory_order_acquire) == 0`, preserving `expected_context == 0` filtering, `foreign_context_calls`, and `calls[index(operation)]` counters identically before falling back to `publish()`.
+  - Applied across all 8 resource-operation stubs (`CopySubresourceRegion`, `CopyResource`, `UpdateSubresource`, `CopyStructureCount`, `ClearUnorderedAccessViewUint`, `ClearUnorderedAccessViewFloat`, `GenerateMips`, `ResolveSubresource`) to skip `_ReturnAddress()` and 80-byte `event` struct construction across 500,000+ D3D11 copy/update calls when no observer is active.
+
+### Versioning & Documentation (`v0.4.0`)
+- **Versioning & Docs (`version.json`, `README.md`, `CHANGELOG.md`, `OPTIMIZATIONS.md`, `OPTIMIZATIONS_FR.md`)**:
+  - Bumped `version.json` to `"0.4.0"` (`file_version: [0, 4, 0, 0]`, `prerelease: true`), updated `README.md` top highlights/install/version table to `v0.4.0`, documented all `v0.4.0` changes in `CHANGELOG.md`, and appended Section 10 (`v0.4.0` CPU Contention & Frame Pacing) to `OPTIMIZATIONS.md` and `OPTIMIZATIONS_FR.md`.
+
+---
+
 ## [0.3.0] — OptiLord (GPU Render Scale, FidelityFX CAS & OpenXR Hidden Area Mesh)
 
 ### Decoupled VR Render Scale & AMD FidelityFX CAS Sharpening (`v0.3.0`)

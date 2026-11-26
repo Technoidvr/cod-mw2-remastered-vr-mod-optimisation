@@ -185,6 +185,7 @@ namespace vr::openvr
 			if (enabled) final_shutdown_ = false;
 			if (enabled && !status_.desired_enabled) auto_initialize_allowed_ = true;
 			status_.desired_enabled = enabled;
+			desired_enabled_atomic_.store(enabled, std::memory_order_release);
 			publish_status_locked();
 		}
 
@@ -645,14 +646,12 @@ namespace vr::openvr
 
 		bool requested_enabled() const
 		{
-			const wait_timing::scoped_lock lock(mutex_, wait_timing::site::vr_other);
-			return status_.desired_enabled;
+			return desired_enabled_atomic_.load(std::memory_order_acquire);
 		}
 
 		bool applied_enabled() const
 		{
-			const wait_timing::scoped_lock lock(mutex_, wait_timing::site::vr_enabled);
-			return status_.applied_enabled;
+			return applied_enabled_atomic_.load(std::memory_order_acquire);
 		}
 
 		bool is_session_running() const noexcept
@@ -782,6 +781,7 @@ namespace vr::openvr
 		{
 			if (present_transaction_.active) return;
 			status_.desired_enabled = false;
+			desired_enabled_atomic_.store(false, std::memory_order_release);
 			status_.reinitialize_pending = false;
 			final_shutdown_ = true;
 			shutdown_requested_ = false;
@@ -804,6 +804,8 @@ namespace vr::openvr
 			status_snapshot_ = status_;
 			session_running_atomic_.store(status_.applied_enabled && status_.session_running,
 				std::memory_order_release);
+			desired_enabled_atomic_.store(status_.desired_enabled, std::memory_order_release);
+			applied_enabled_atomic_.store(status_.applied_enabled, std::memory_order_release);
 		}
 
 		bool fail(const runtime_state state, const std::string& operation, const std::int64_t result,
@@ -1574,6 +1576,7 @@ namespace vr::openvr
 			status_.effective_scene_mode = scene_mode::engine_stereo;
 			status_.session_running = true;
 			status_.applied_enabled = true;
+			applied_enabled_atomic_.store(true, std::memory_order_release);
 			status_.reinitialize_pending = false;
 			status_.state = runtime_state::session_idle;
 			status_.native_renderer_ready = false;
@@ -1708,6 +1711,7 @@ namespace vr::openvr
 			frame_phase_ = frame_phase::need_pose;
 			if (status_.session_running) ++status_.session_end_count;
 			status_.applied_enabled = false;
+			applied_enabled_atomic_.store(false, std::memory_order_release);
 			status_.loader_loaded = false;
 			status_.instance_created = false;
 			status_.session_created = false;
@@ -2241,6 +2245,8 @@ namespace vr::openvr
 		std::uint64_t initialization_device_generation_{};
 		std::atomic_uint64_t resize_pending_generation_{};
 		std::atomic_bool session_running_atomic_{};
+		std::atomic_bool desired_enabled_atomic_{};
+		std::atomic_bool applied_enabled_atomic_{};
 		std::uint32_t scene_width_{}, scene_height_{};
 	};
 

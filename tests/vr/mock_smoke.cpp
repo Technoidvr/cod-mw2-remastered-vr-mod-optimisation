@@ -3,6 +3,7 @@
 #include "component/vr/engine_stereo_bridge.hpp"
 #include "component/vr/openxr_runtime.hpp"
 #include "component/vr/render_tuning.hpp"
+#include "component/vr/runtime_backend.hpp"
 #include "component/vr/steamvr_runtime.hpp"
 #include "component/vr/texture_blit.hpp"
 #include "mock_control.hpp"
@@ -674,16 +675,22 @@ namespace
 			vr::engine_scene_resolution::extent{2000, 2000}), "scale_extent(NaN) mismatch");
 	}
 
-		void run_happy_path(mock_loader_control& loader, const d3d11::device_snapshot& first_graphics)
+	void run_happy_path(mock_loader_control& loader, const d3d11::device_snapshot& first_graphics)
 	{
 		configure(loader, first_graphics, vr::tests::mock::scenario::happy);
 		vr::openxr::runtime_backend runtime;
+		vr::tests::require(!runtime.requested_enabled() && !runtime.applied_enabled(),
+			"fresh runtime unexpectedly reported enabled");
 		runtime.set_desired_enabled(true);
+		vr::tests::require(runtime.requested_enabled() && !runtime.applied_enabled(),
+			"requested_enabled did not reflect desired enable before initialize");
 		runtime.set_scene_mode(vr::scene_mode::synthetic);
 		vr::tests::require(runtime.initialize(first_graphics), "happy-path initialization failed");
 
 		auto status = runtime.get_status();
 		vr::tests::require(status.state == vr::runtime_state::session_idle, "initialized runtime is not session_idle");
+		vr::tests::require(runtime.requested_enabled() && runtime.applied_enabled(),
+			"initialized runtime did not report requested_enabled and applied_enabled");
 		vr::tests::require(status.applied_enabled && status.loader_loaded && status.instance_created &&
 			status.session_created, "happy path did not create the OpenXR object graph");
 		vr::tests::require(status.view_count == 2 && status.eyes[0].width == 64 && status.eyes[1].height == 64,
@@ -704,8 +711,11 @@ namespace
 		{
 			runtime.on_present(first_graphics, frame);
 		}
+		runtime.poll_capture(first_graphics);
 		status = runtime.get_status();
 		vr::tests::require(status.submitted_frames == 4, "multi-frame happy path did not submit four frames");
+		vr::tests::require(runtime.requested_enabled() && runtime.applied_enabled(),
+			"running runtime did not report requested_enabled and applied_enabled");
 
 		loader.set_should_render(FALSE);
 		runtime.on_present(first_graphics, 5);
@@ -753,21 +763,26 @@ namespace
 		vr::tests::require(status.submitted_frames == 8, "repeated reinitialize frames were not submitted");
 
 		runtime.set_desired_enabled(false);
+		vr::tests::require(!runtime.requested_enabled(), "disable did not update requested_enabled");
 		runtime.on_present(second_graphics, 10);
 		status = runtime.get_status();
 		vr::tests::require(status.state == vr::runtime_state::disabled && !status.desired_enabled &&
-			!status.applied_enabled && !status.loader_loaded, "disable did not fully tear down VR");
+			!status.applied_enabled && !status.loader_loaded &&
+			!runtime.requested_enabled() && !runtime.applied_enabled(),
+			"disable did not fully tear down VR");
 
 		runtime.set_desired_enabled(true);
 		loader.queue_session_state(XR_SESSION_STATE_READY);
 		runtime.on_present(second_graphics, 11);
 		status = runtime.get_status();
-		vr::tests::require(status.state == vr::runtime_state::running && status.session_generation == 5,
+		vr::tests::require(status.state == vr::runtime_state::running && status.session_generation == 5 &&
+			runtime.requested_enabled() && runtime.applied_enabled(),
 			"enable after disable did not rebuild and run");
 
 		runtime.shutdown();
 		status = runtime.get_status();
-		vr::tests::require(status.state == vr::runtime_state::disabled && !status.loader_loaded,
+		vr::tests::require(status.state == vr::runtime_state::disabled && !status.loader_loaded &&
+			!runtime.requested_enabled() && !runtime.applied_enabled(),
 			"shutdown did not leave a disabled unloaded runtime");
 
 		const auto statistics = loader.statistics();
@@ -788,6 +803,23 @@ namespace
 		vr::tests::require(statistics.views_located == 9 && statistics.images_acquired == 18 &&
 			statistics.images_waited == 18 && statistics.images_released == 18,
 			"view and swapchain image ABI counts are inconsistent");
+	}
+
+	void expect_facade_lockfree_queries(const d3d11::device_snapshot& graphics)
+	{
+		vr::runtime_backend facade;
+		vr::tests::require(!facade.requested_enabled() && !facade.applied_enabled(),
+			"fresh runtime_backend facade unexpectedly reported enabled");
+		facade.set_desired_enabled(true);
+		vr::tests::require(facade.requested_enabled() && !facade.applied_enabled(),
+			"runtime_backend facade requested_enabled did not reflect enable");
+		facade.poll_capture(graphics);
+		facade.set_desired_enabled(false);
+		vr::tests::require(!facade.requested_enabled() && !facade.applied_enabled(),
+			"runtime_backend facade requested_enabled did not reflect disable");
+		facade.shutdown();
+		vr::tests::require(!facade.requested_enabled() && !facade.applied_enabled(),
+			"runtime_backend facade reported enabled after shutdown");
 	}
 }
 
@@ -833,6 +865,7 @@ int main()
 		expect_destroy_instance_null_proc(loader, graphics);
 			expect_strict_scene_source_rejection(loader, graphics);
 		run_happy_path(loader, graphics);
+		expect_facade_lockfree_queries(graphics);
 		openxr_adaptation_tests::calibrated_grip_input(loader,graphics);
 		openxr_adaptation_tests::standard_wrist_equivalence();
 		openxr_adaptation_tests::standard_grip_input(loader,graphics);
