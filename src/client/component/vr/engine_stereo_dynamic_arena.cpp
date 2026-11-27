@@ -15,31 +15,38 @@ namespace vr::engine_stereo_dynamic_arena
 		std::uint64_t validation_query_count{};
 		std::uint64_t resident_validation_count{};
 #endif
-		// Exists for one synchronous capture/replace/restore call only. Native
-		// rendering never runs while it is retained; each next boundary re-queries
-		// protection. Actual reads/writes remain guarded against concurrent faults.
-		struct range_validation
+		// Exists for one synchronous owner call only. Native rendering never runs
+		// while it is retained; callers reset at view/owner boundaries.
+		// Actual reads/writes remain SEH-guarded against concurrent faults.
+		std::uintptr_t checked_end_in(const validation_scope& scope,
+			const std::uintptr_t address, const bool writable) noexcept
 		{
-			struct region { std::uintptr_t begin{}, end{}; bool writable{}; };
-			std::array<region, 4> regions{};
-			std::size_t count{};
-
-			std::uintptr_t checked_end(std::uintptr_t address, bool writable) const noexcept
+			for (std::size_t i{}; i < scope.count; ++i)
+				if (address >= scope.regions[i].begin && address < scope.regions[i].end &&
+					(!writable || scope.regions[i].writable)) return scope.regions[i].end;
+			return 0;
+		}
+		void record_region(validation_scope& scope, const std::uintptr_t begin,
+			const std::uintptr_t end, const bool writable) noexcept
+		{
+			for (std::size_t i{}; i < scope.count; ++i)
 			{
-				for (std::size_t i{}; i < count; ++i)
-					if (address >= regions[i].begin && address < regions[i].end &&
-						(!writable || regions[i].writable)) return regions[i].end;
-				return 0;
+				if (scope.regions[i].begin == begin && scope.regions[i].end == end)
+				{
+					scope.regions[i].writable = scope.regions[i].writable || writable;
+					return;
+				}
 			}
-		};
+			if (scope.count < scope.regions.size())
+				scope.regions[scope.count++] = {begin, end, writable};
+		}
 
 		// Query only the pages we actually touch. VirtualQuery also discovers the
 		// end of an entire equal-protection region (large native image arenas are
 		// expensive). Invalid/nonresident results retain the original fallback.
-		// This proof still expires at the end of each synchronous operation.
 		enum class page_result { unknown, accepted, rejected };
 		page_result resident_range(std::uintptr_t address, std::size_t size,
-			bool writable, range_validation& validation) noexcept
+			bool writable, validation_scope& validation) noexcept
 		{
 			static const auto page_size = []
 			{
@@ -72,9 +79,7 @@ namespace vr::engine_stereo_dynamic_arena
 				const bool can_read = can_write || protection == PAGE_READONLY || protection == PAGE_EXECUTE_READ;
 				if (pages[i].VirtualAttributes.Bad || (flags & (PAGE_GUARD | PAGE_NOACCESS)) ||
 					!can_read || (writable && !can_write)) return page_result::rejected;
-				if (validation.count < validation.regions.size())
-					validation.regions[validation.count++] =
-						{first + i * page_size, first + (i + 1) * page_size, can_write};
+				record_region(validation, first + i * page_size, first + (i + 1) * page_size, can_write);
 			}
 #ifdef H2VR_DYNAMIC_ARENA_TESTING
 			++resident_validation_count;
@@ -95,18 +100,18 @@ namespace vr::engine_stereo_dynamic_arena
 		}
 
 		[[nodiscard]] bool committed_range(const std::uintptr_t address,
-			const std::size_t size, const bool writable, range_validation& validation) noexcept
+			const std::size_t size, const bool writable, validation_scope& validation) noexcept
 		{
 			const auto maximum = (std::numeric_limits<std::uintptr_t>::max)();
 			if (address == 0 || size == 0 || address > maximum - size) return false;
 			const auto end = address + size;
-			if (validation.checked_end(address, writable) >= end) return true;
+			if (checked_end_in(validation, address, writable) >= end) return true;
 			const auto resident = resident_range(address, size, writable, validation);
 			if (resident != page_result::unknown) return resident == page_result::accepted;
 			auto cursor = address;
 			while (cursor < end)
 			{
-				if (const auto checked_end = validation.checked_end(cursor, writable))
+				if (const auto checked_end = checked_end_in(validation, cursor, writable))
 				{
 					cursor = (std::min)(end, checked_end);
 					continue;
@@ -138,15 +143,14 @@ namespace vr::engine_stereo_dynamic_arena
 				if (region > maximum - information.RegionSize) return false;
 				const auto region_end = region + information.RegionSize;
 				if (region_end <= cursor) return false;
-				if (validation.count < validation.regions.size())
-					validation.regions[validation.count++] = {region, region_end, writeable};
+				record_region(validation, region, region_end, writeable);
 				cursor = (std::min)(end, region_end);
 			}
 			return true;
 		}
 
 		[[nodiscard]] bool read_value(const std::uintptr_t address,
-			std::uintptr_t& output, range_validation& validation) noexcept
+			std::uintptr_t& output, validation_scope& validation) noexcept
 		{
 			if (!committed_range(address, sizeof(output), false, validation)) return false;
 			__try
@@ -273,7 +277,7 @@ namespace vr::engine_stereo_dynamic_arena
 		}
 
 		[[nodiscard]] bool capture_data(const std::uintptr_t data,
-			index_base_snapshot& output, failure& error, range_validation& validation) noexcept
+			index_base_snapshot& output, failure& error, validation_scope& validation) noexcept
 		{
 			output = {};
 			if (data == 0)
@@ -324,7 +328,7 @@ namespace vr::engine_stereo_dynamic_arena
 		}
 
 		[[nodiscard]] bool write_snapshot(const index_base_snapshot& value,
-			failure& error, range_validation& validation) noexcept
+			failure& error, validation_scope& validation) noexcept
 		{
 			if (!value.valid || value.data_identity == 0)
 			{
@@ -361,14 +365,14 @@ namespace vr::engine_stereo_dynamic_arena
 	bool capture_frontend_data(const std::uintptr_t frontend_data,
 		index_base_snapshot& output, failure& error) noexcept
 	{
-		range_validation validation;
+		validation_scope validation;
 		return capture_data(frontend_data, output, error, validation);
 	}
 
 	namespace
 	{
 		bool capture_backend_checked(void* const backend_state, index_base_snapshot& output,
-			failure& error, range_validation& validation) noexcept
+			failure& error, validation_scope& validation) noexcept
 		{
 			output = {};
 			if (backend_state == nullptr)
@@ -394,9 +398,15 @@ namespace vr::engine_stereo_dynamic_arena
 	}
 
 	bool capture_backend(void* const backend_state, index_base_snapshot& output,
+		failure& error, validation_scope& scope) noexcept
+	{
+		return capture_backend_checked(backend_state, output, error, scope);
+	}
+
+	bool capture_backend(void* const backend_state, index_base_snapshot& output,
 		failure& error) noexcept
 	{
-		range_validation validation;
+		validation_scope validation;
 		return capture_backend_checked(backend_state, output, error, validation);
 	}
 
@@ -422,7 +432,7 @@ namespace vr::engine_stereo_dynamic_arena
 	bool replace(const index_base_snapshot& desired,
 		index_base_snapshot& displaced, failure& error) noexcept
 	{
-		range_validation validation;
+		validation_scope validation;
 		displaced = {};
 		if (!desired.valid ||
 			!capture_data(desired.data_identity, displaced, error, validation)) return false;
@@ -443,22 +453,21 @@ namespace vr::engine_stereo_dynamic_arena
 
 	bool replace_backend(void* const backend_state,
 		const index_base_snapshot& desired, index_base_snapshot& displaced,
-		failure& error) noexcept
+		failure& error, validation_scope& scope) noexcept
 	{
-		range_validation validation;
 		displaced = {};
 		if (!desired.valid ||
-			!capture_backend_checked(backend_state, displaced, error, validation)) return false;
+			!capture_backend_checked(backend_state, displaced, error, scope)) return false;
 		if (displaced.data_identity != desired.data_identity)
 		{
 			displaced = {};
 			error = failure::data_identity;
 			return false;
 		}
-		if (write_snapshot(desired, error, validation)) return true;
+		if (write_snapshot(desired, error, scope)) return true;
 		const auto replace_error = error;
 		failure ignored{};
-		if (write_snapshot(displaced, ignored, validation))
+		if (write_snapshot(displaced, ignored, scope))
 		{
 			displaced = {};
 			error = replace_error;
@@ -470,9 +479,23 @@ namespace vr::engine_stereo_dynamic_arena
 		return false;
 	}
 
+	bool replace_backend(void* const backend_state,
+		const index_base_snapshot& desired, index_base_snapshot& displaced,
+		failure& error) noexcept
+	{
+		validation_scope validation;
+		return replace_backend(backend_state, desired, displaced, error, validation);
+	}
+
+	bool restore(const index_base_snapshot& saved, failure& error,
+		validation_scope& scope) noexcept
+	{
+		return write_snapshot(saved, error, scope);
+	}
+
 	bool restore(const index_base_snapshot& saved, failure& error) noexcept
 	{
-		range_validation validation;
+		validation_scope validation;
 		return write_snapshot(saved, error, validation);
 	}
 

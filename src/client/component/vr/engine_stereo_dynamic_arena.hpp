@@ -65,6 +65,18 @@ namespace vr::engine_stereo_dynamic_arena
 		bool valid{};
 	};
 
+	struct validation_scope
+	{
+		struct region
+		{
+			std::uintptr_t begin{}, end{};
+			bool writable{};
+		};
+		std::array<region, 8> regions{};
+		std::size_t count{};
+		void reset() noexcept { count = 0; }
+	};
+
 	[[nodiscard]] constexpr std::uintptr_t mesh_offset(
 		const std::size_t index) noexcept
 	{
@@ -80,6 +92,9 @@ namespace vr::engine_stereo_dynamic_arena
 		index_base_snapshot& output, failure& error) noexcept;
 	[[nodiscard]] bool capture_backend(void* backend_state,
 		index_base_snapshot& output, failure& error) noexcept;
+	[[nodiscard]] bool capture_backend(void* backend_state,
+		index_base_snapshot& output, failure& error,
+		validation_scope& scope) noexcept;
 	// Require both the backend data identity and every scoped index origin to
 	// remain bit-exact.
 	[[nodiscard]] bool validate_backend(void* backend_state,
@@ -94,9 +109,14 @@ namespace vr::engine_stereo_dynamic_arena
 	[[nodiscard]] bool replace_backend(void* backend_state,
 		const index_base_snapshot& desired, index_base_snapshot& displaced,
 		failure& error) noexcept;
+	[[nodiscard]] bool replace_backend(void* backend_state,
+		const index_base_snapshot& desired, index_base_snapshot& displaced,
+		failure& error, validation_scope& scope) noexcept;
 	// Restore the exact natural post-left state after the right owner returns.
 	[[nodiscard]] bool restore(const index_base_snapshot& saved,
 		failure& error) noexcept;
+	[[nodiscard]] bool restore(const index_base_snapshot& saved,
+		failure& error, validation_scope& scope) noexcept;
 
 	[[nodiscard]] const char* to_string(failure value) noexcept;
 #ifdef H2VR_DYNAMIC_ARENA_TESTING

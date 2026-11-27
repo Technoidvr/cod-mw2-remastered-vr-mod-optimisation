@@ -373,5 +373,10 @@
   "settings.hiddenAreaMesh": "OpenXR-Sichtfeldmaske",
   "settings.hiddenAreaMeshHint": "Maskiert unsichtbare OpenXR-Linsenecken im Tiefenpuffer vorab aus, um nicht sichtbare Randpixel beim Rendern zu überspringen. Steigert die GPU-Leistung; standardmäßig aktiviert.",
   "settings.shoulderHolsterWidth": "Schulterholster-Abstand",
-  "settings.shoulderHolsterWidthHint": "Horizontaler Abstand von der Mitte zu jedem linken/rechten Schulterholster (0,10 bis 0,40 m, Standard: 0,20 m). Ermöglicht das Verstauen je einer Zweihandwaffe pro Schulter."
+  "settings.shoulderHolsterWidthHint": "Horizontaler Abstand von der Mitte zu jedem linken/rechten Schulterholster (0,10 bis 0,40 m, Standard: 0,20 m). Ermöglicht das Verstauen je einer Zweihandwaffe pro Schulter.",
+  "settings.scopeRenderMode": "Zielfernrohr-PIP-Rendering",
+  "settings.scopeRenderModeHint": "Steuert, ob vergrößernde Optiken eine zusätzliche 3D-Szene rendern. „Nur Wärmebild“ nutzt bei normalen Optiken einen leichten Ein-Augen-Zoom und spart beim Zielen deutlich CPU- und GPU-Leistung.",
+  "choice.scopeRenderOn": "Volles PIP (alle Optiken)",
+  "choice.scopeRenderThermalOnly": "Nur Wärmebild (spart CPU)",
+  "choice.scopeRenderOff": "Aus (Ein-Augen-Zoom)"
 }

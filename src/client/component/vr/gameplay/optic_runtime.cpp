@@ -7,6 +7,7 @@
 #include "../eye_composition.hpp"
 #include <utils/native_memory.hpp>
 #include "../native_thermal.hpp"
+#include "../settings.hpp"
 #include "../thermal_scene_policy.hpp"
 #include "../spatial_panel_renderer.hpp"
 #include "component/command.hpp"
@@ -22,6 +23,29 @@ namespace vr::gameplay::weapons::optics
 		game::dvar_t* enabled{};
 		game::dvar_t* magnification{};
 		game::dvar_t* render_scene{};
+		game::dvar_t* render_mode{};
+		[[nodiscard]] bool wants_independent_scene(const bool thermal) noexcept
+		{
+			if (!render_scene || !render_scene->current.enabled)
+				return false;
+			const int mode = render_mode ? render_mode->current.integer : 0;
+			if (mode == 1)
+				return thermal;
+			if (mode == 2)
+				return false;
+			return true;
+		}
+		[[nodiscard]] const char* active_scope_mode_label() noexcept
+		{
+			if (!render_scene || !render_scene->current.enabled)
+				return "same_eye_image";
+			const int mode = render_mode ? render_mode->current.integer : 0;
+			if (mode == 1)
+				return "thermal_only";
+			if (mode == 2)
+				return "same_eye_image";
+			return "extra_scene";
+		}
 		std::atomic_bool alive{true};
 		bool world_contract{};
 		struct request_state
@@ -85,7 +109,6 @@ namespace vr::gameplay::weapons::optics
 			pair.pair = event.pair_id;
 			pair.publication = event.views.eyes[0].publication;
 			pair.device = event.device_generation;
-			pair.independent = render_scene && render_scene->current.enabled;
 			if (!event.model_origins.valid)
 			{
 				reason = "missing current model origins";
@@ -102,6 +125,7 @@ namespace vr::gameplay::weapons::optics
 			}
 			const auto& lens = pose.muzzle.optic;
 			pair.thermal = lens.thermal;
+			pair.independent = wants_independent_scene(pair.thermal);
 			if (pair.thermal && (!pair.independent || !native_thermal::ready()))
 			{
 				reason = "thermal optic requires verified native scene rendering";
@@ -174,7 +198,7 @@ namespace vr::gameplay::weapons::optics
 				return result;
 			try
 			{
-				if (!prepare(event))
+				if (!prepare(event) || !pair.independent)
 					return result;
 				thread_local unsigned preferred = 2;
 				thread_local std::uint64_t owner{}, generation{};
@@ -538,6 +562,13 @@ namespace vr::gameplay::weapons::optics
 			                         true,
 			                         game::DVAR_FLAG_SAVED,
 			                         "Render one additional narrow scene view for the active scope");
+			static auto scope_modes = settings::scope_render_mode.values;
+			render_mode =
+			    dvars::register_enum(settings::scope_render_mode.name,
+			                         scope_modes.data(),
+			                         settings::scope_render_mode.default_index,
+			                         game::DVAR_FLAG_SAVED,
+			                         "Independent scope scene rendering mode: on, thermal_only, or off");
 			world_contract = native_thermal::world_ready();
 			if (world_contract)
 				thermal_scene::plan = plan_world;
@@ -559,7 +590,7 @@ namespace vr::gameplay::weapons::optics
 				        missed.load(),
 				        binding_reason.load(),
 				        reason.load(),
-				        render_scene && render_scene->current.enabled ? "extra_scene" : "same_eye_image",
+				        active_scope_mode_label(),
 				        render_requests.load(),
 				        rendered_images.load(),
 				        world_contract,

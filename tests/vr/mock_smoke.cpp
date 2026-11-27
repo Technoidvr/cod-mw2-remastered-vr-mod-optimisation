@@ -608,6 +608,28 @@ namespace
 		vr::tests::require(any_different && min_r < 0.35f && max_r > 0.65f,
 			std::format("CAS upscale produced uniform/unexpected output (min_r={}, max_r={})", min_r, max_r));
 
+		// Re-draw the same (source, destination) with dimming active to verify cached command list updates parameters.
+		auto dim_request = cas_request;
+		dim_request.dim = 0.75f;
+		vr::tests::require(blit.draw(dim_request, error),
+			std::format("Cached CAS dimmed draw failed: {}", error));
+		graphics.context->CopyResource(staging64.Get(), dst_tex.Get());
+		vr::tests::require(SUCCEEDED(graphics.context->Map(staging64.Get(), 0, D3D11_MAP_READ, 0, &mapped)),
+			"Cached CAS dimmed staging Map failed");
+		float dimmed_max_r = -1e9f;
+		for (std::uint32_t y = 0; y < dst_h; ++y)
+		{
+			const auto* row = reinterpret_cast<const std::uint32_t*>(
+				static_cast<const std::uint8_t*>(mapped.pData) + y * mapped.RowPitch);
+			for (std::uint32_t x = 0; x < dst_w; ++x)
+			{
+				dimmed_max_r = (std::max)(dimmed_max_r, decode_unorm_float(row[x] & 0x7FFu, 6u));
+			}
+		}
+		graphics.context->Unmap(staging64.Get(), 0);
+		vr::tests::require(dimmed_max_r < max_r * 0.5f,
+			std::format("Cached CAS dimmed draw ignored parameter update (before={}, after={})", max_r, dimmed_max_r));
+
 		// Verify CopyResource fast-path (32x32 -> 32x32, dim = 0, sharpness = 0).
 		D3D11_TEXTURE2D_DESC fast_desc = src_desc;
 		fast_desc.BindFlags = D3D11_BIND_RENDER_TARGET;

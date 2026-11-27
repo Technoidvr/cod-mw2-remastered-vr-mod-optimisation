@@ -478,7 +478,8 @@ namespace vr::engine_stereo_owner_pass
 			if (!active.dynamic_index_scope_active) return true;
 			engine_stereo_dynamic_arena::failure restore_error{};
 			const auto restored = engine_stereo_dynamic_arena::restore(
-				active.dynamic_index_restore, restore_error);
+				active.dynamic_index_restore, restore_error,
+				active.dynamic_arena_validation);
 			if (!restored)
 			{
 				fail_dynamic_index(active, restore_error);
@@ -547,7 +548,8 @@ namespace vr::engine_stereo_owner_pass
 		void retire_transaction_preserving_records(transaction& active) noexcept
 		{
 			engine_stereo_sun_shadow::unwatch();
-			active.sun_shadow = {}; active.sun_texture.Reset();
+			active.sun_shadow = {}; active.sun_texture.Reset(); active.sun_transparent_texture.Reset();
+			active.dynamic_arena_validation.reset();
 			// Backend states may retain +0x3238/+0x3240 until the next native owner
 			// installs a record. Keep the private right-eye bytes alive across that
 			// interval; the next begin() replaces them before its own owner call.
@@ -853,7 +855,7 @@ namespace vr::engine_stereo_owner_pass
 				auto& snapshot = active->dynamic_index_left[
 					active->dynamic_index_left_count];
 				if (!engine_stereo_dynamic_arena::capture_backend(backend_state,
-					snapshot, dynamic_index_error))
+					snapshot, dynamic_index_error, active->dynamic_arena_validation))
 				{
 					fail_dynamic_index(*active, dynamic_index_error);
 					publish_dynamic_index_boundary_counts(*active);
@@ -879,7 +881,8 @@ namespace vr::engine_stereo_owner_pass
 				}
 				engine_stereo_dynamic_arena::index_base_snapshot displaced{};
 				if (!engine_stereo_dynamic_arena::replace_backend(backend_state,
-					active->dynamic_index_left[ordinal], displaced, dynamic_index_error))
+					active->dynamic_index_left[ordinal], displaced, dynamic_index_error,
+					active->dynamic_arena_validation))
 				{
 					// replace_backend restores its immediate displaced state after a
 					// failed write. If cleanup itself failed, retain that exact snapshot
@@ -1257,7 +1260,15 @@ namespace vr::engine_stereo_owner_pass
 			step("native_thermal",[&]{return auxiliary_scene::apply_thermal(output.auxiliary_record,request);});
 			step("auxiliary_history",[&]{return auxiliary_scene::prepare_history(output.auxiliary_record,request,output.device_generation,
 				output.records.pair_id,output.auxiliary_history,output.auxiliary_next_history,output.auxiliary_reset);});
-			if(accepted){output.auxiliary=request;observed.stage="auxiliary_admitted";observed.success=true;}
+			if(accepted)
+			{
+				if(!request.full_thermal)
+				{
+					const float zero_ssr=0.0f;
+					std::memcpy(output.auxiliary_record.data()+thermal_scene::ssr_offset,&zero_ssr,sizeof(zero_ssr));
+				}
+				output.auxiliary=request;observed.stage="auxiliary_admitted";observed.success=true;
+			}
 			if(observed.active||request.valid)probe::auxiliary.record(observed);
 			// The auxiliary must be built from native thermal input BEFORE this
 			// split, including when the eye box produces no optical request.
@@ -1291,6 +1302,7 @@ namespace vr::engine_stereo_owner_pass
 			(eye==1 && active.auxiliary.valid && (!active.auxiliary_complete || active.pending_left)))
 			{fail_transaction(active,failure::record);return nullptr;}
 		if (eye!=0) active.dynamic_index_right_count=0;
+		active.dynamic_arena_validation.reset();
 		active.current_view = eye;
 		if (eye<2 && active.scene_batch_probe_pair_active)
 		{
@@ -1541,46 +1553,75 @@ namespace vr::engine_stereo_owner_pass
 	bool begin_sun_shadow(void* data, void* record) noexcept
 	{
 		auto* active = active_transaction;
-		if (!active || !*active || !active->production || active->failed || active->current_view > 1 ||
+		if (!active || !*active || !active->production || active->failed ||
+			active->current_view >= auxiliary_scene::view_count ||
 			GetCurrentThreadId() != active->owner_thread_id || record != active->record(active->current_view) ||
 			active->claim.frontend != reinterpret_cast<std::uintptr_t>(data)) return false;
 		auto& range = active->sun_shadow;
 		if (active->current_view == 0)
 		{
-			engine_stereo_sun_shadow::unwatch(); range = {}; active->sun_texture.Reset();
-			if (active->auxiliary.valid || diagnostics::sun_shadow::capturing()) return false;
+			engine_stereo_sun_shadow::unwatch();
+			range = {};
+			active->sun_texture.Reset();
+			active->sun_transparent_texture.Reset();
+			if (diagnostics::sun_shadow::capturing()) return false;
 			h2_gpu_context_lock lock;
-			if (lock && engine_stereo_sun_shadow::snapshot(data, record, range.left, active->sun_texture))
+			if (lock && engine_stereo_sun_shadow::snapshot(data, record, range.left,
+				active->sun_texture, &active->sun_transparent_texture, true))
 			{
 				Microsoft::WRL::ComPtr<ID3D11Device> source_device, device;
 				active->sun_texture->GetDevice(&source_device); active->context->GetDevice(&device);
 				if (source_device != device || active->context->GetType() != D3D11_DEVICE_CONTEXT_IMMEDIATE) return false;
+				if (active->sun_transparent_texture)
+				{
+					Microsoft::WRL::ComPtr<ID3D11Device> trans_device;
+					active->sun_transparent_texture->GetDevice(&trans_device);
+					if (trans_device != device) return false;
+				}
 				range.begin = active->dynamic_index_left_count; range.open = true;
-				engine_stereo_sun_shadow::watch(reinterpret_cast<ID3D11Resource*>(range.left.resource), active->context.Get());
+				engine_stereo_sun_shadow::watch(
+					reinterpret_cast<ID3D11Resource*>(range.left.resource),
+					active->context.Get(),
+					reinterpret_cast<ID3D11Resource*>(range.left.transparent_resource));
 			}
 			return false;
 		}
-		if (!range.valid || active->auxiliary.valid || diagnostics::sun_shadow::capturing())
+		const bool is_aux = (active->current_view == auxiliary_scene::view_index);
+		if (!range.valid || diagnostics::sun_shadow::capturing())
 		{
-			engine_stereo_sun_shadow::note_refusal(); engine_stereo_sun_shadow::unwatch(); return false;
+			engine_stereo_sun_shadow::note_refusal();
+			engine_stereo_sun_shadow::unwatch();
+			range.valid = false;
+			return false;
 		}
 		// Match the native serialization point before consuming the image. Any
-		// intervening writer or unexplained command list keeps the right draw.
+		// intervening writer or unexplained command list keeps the native draw.
 		h2_gpu_context_lock lock;
 		engine_stereo_sun_shadow::inputs right;
-		Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
-		const bool reuse = lock && engine_stereo_sun_shadow::watching(range.left.resource, active->context.Get()) &&
-			engine_stereo_sun_shadow::snapshot(data, record, right, texture) &&
+		Microsoft::WRL::ComPtr<ID3D11Texture2D> texture, trans_texture;
+		const bool reuse = lock &&
+			engine_stereo_sun_shadow::watching(
+				range.left.resource, active->context.Get(), range.left.transparent_resource) &&
+			engine_stereo_sun_shadow::snapshot(data, record, right, texture, &trans_texture, false) &&
 			range.accepts(right, active->dynamic_index_right_count, active->dynamic_index_left_count,
 				engine_stereo_sun_shadow::modified());
 		if (reuse)
 		{
 			active->dynamic_index_right_count = range.end;
 			publish_dynamic_index_boundary_counts(*active);
-			engine_stereo_sun_shadow::note_skip(range.end - range.begin);
+			engine_stereo_sun_shadow::note_skip(range.end - range.begin, is_aux);
+			if (!is_aux) engine_stereo_sun_shadow::unwatch();
 		}
-		else engine_stereo_sun_shadow::note_refusal();
-		engine_stereo_sun_shadow::unwatch();
+		else
+		{
+			if (!engine_stereo_sun_shadow::modified())
+			{
+				engine_stereo_sun_shadow::note_right_mismatch();
+			}
+			engine_stereo_sun_shadow::note_refusal();
+			range.valid = false;
+			engine_stereo_sun_shadow::unwatch();
+		}
 		return reuse;
 	}
 	void end_sun_shadow(void* data, void* record) noexcept
@@ -1592,10 +1633,15 @@ namespace vr::engine_stereo_owner_pass
 		auto& range = active->sun_shadow;
 		range.open = false; range.end = active->dynamic_index_left_count;
 		engine_stereo_sun_shadow::inputs after;
-		Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
-		if (!engine_stereo_sun_shadow::snapshot(data, record, after, texture) || !(after == range.left) ||
-			range.end <= range.begin || range.end > maximum_dynamic_index_boundaries_per_eye)
-		{ engine_stereo_sun_shadow::unwatch(); return; }
+		Microsoft::WRL::ComPtr<ID3D11Texture2D> texture, trans_texture;
+		if (!engine_stereo_sun_shadow::snapshot(data, record, after, texture, &trans_texture, false) ||
+			!(after == range.left) || range.end < range.begin ||
+			range.end > maximum_dynamic_index_boundaries_per_eye)
+		{
+			engine_stereo_sun_shadow::note_post_left_rejection();
+			engine_stereo_sun_shadow::unwatch();
+			return;
+		}
 		range.valid = true;
 		engine_stereo_sun_shadow::note_left();
 	}
@@ -2112,6 +2158,7 @@ namespace vr::engine_stereo_owner_pass
 	void end(transaction& active) noexcept
 	{
 		if (!active) return;
+		active.dynamic_arena_validation.reset();
 		if (GetCurrentThreadId() == active.owner_thread_id) active.light_views.restore();
 		if(GetCurrentThreadId()==active.owner_thread_id)active.thermal_world_lease.restore();
 		if(active.failed) active.auxiliary_history.valid=false;

@@ -373,5 +373,10 @@
   "settings.hiddenAreaMesh": "Masque de zone cachée OpenXR",
   "settings.hiddenAreaMeshHint": "Masque en profondeur les coins invisibles des lentilles OpenXR afin d’ignorer les pixels hors champ lors du rendu. Améliore les performances GPU ; activé par défaut.",
   "settings.shoulderHolsterWidth": "Écartement des holsters d'épaule",
-  "settings.shoulderHolsterWidthHint": "Distance horizontale du centre vers chaque holster d'épaule gauche/droite (0,10 à 0,40 m, défaut : 0,20 m). Permet de ranger une arme à deux mains sur chaque épaule."
+  "settings.shoulderHolsterWidthHint": "Distance horizontale du centre vers chaque holster d'épaule gauche/droite (0,10 à 0,40 m, défaut : 0,20 m). Permet de ranger une arme à deux mains sur chaque épaule.",
+  "settings.scopeRenderMode": "Rendu PIP des lunettes",
+  "settings.scopeRenderModeHint": "Contrôle le rendu d'une troisième vue 3D pour les lunettes. Le mode Thermique uniquement utilise un zoom léger sur l'œil principal pour les lunettes optiques tout en gardant le rendu thermique natif, économisant fortement CPU et GPU à la visée.",
+  "choice.scopeRenderOn": "PIP complet (toutes lunettes)",
+  "choice.scopeRenderThermalOnly": "Thermique uniquement (économie CPU)",
+  "choice.scopeRenderOff": "Désactivé (zoom même œil)"
 }

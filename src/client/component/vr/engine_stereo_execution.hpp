@@ -344,6 +344,7 @@ namespace vr::engine_stereo_execution
 
 	// A completed one-shot census must no longer consume frontend publications.
 	// These belong exclusively to the real stereo scene owner after bootstrap.
+	[[nodiscard]] bool needs_draw_indexed_observation() noexcept;
 	[[nodiscard]] bool bootstrap_complete() noexcept;
 	[[nodiscard]] status get_status() noexcept;
 	[[nodiscard]] bool read_report(report& output) noexcept;

@@ -1,4 +1,5 @@
 #include <std_include.hpp>
+#include "auxiliary_scene.hpp"
 #include "native_post_aa.hpp"
 #include "native_post_aa_frame_thunk.hpp"
 #include "native_post_aa_depth.hpp"
@@ -205,7 +206,7 @@ namespace vr::native_post_aa
 		};
 		if (!supported(selected)) return fail("unsupported_mode");
 		destination = route.destination;
-		if (selected == mode::none) return true;
+		if (selected == mode::none || view.eye == auxiliary_scene::view_index) return true;
 		if (!native_contract()) return fail("native_contract");
 		if (!frame_reads_installed.load(std::memory_order_acquire)) return fail("frame_reader_hooks");
 		const auto output = target_texture(route.destination);
@@ -263,8 +264,9 @@ namespace vr::native_post_aa
 				return reject("native_frame_changed");
 			histories.context = graphics.context.Get();
 			histories.generation = graphics.generation;
-			last_mode[view.eye].store(static_cast<std::uint32_t>(selected), std::memory_order_relaxed);
-			if (selected == mode::none)
+			const auto effective = (view.eye == auxiliary_scene::view_index) ? mode::none : selected;
+			last_mode[view.eye].store(static_cast<std::uint32_t>(effective), std::memory_order_relaxed);
+			if (effective == mode::none)
 			{
 				histories.pending_mask |= 1u << view.eye;
 				return true;

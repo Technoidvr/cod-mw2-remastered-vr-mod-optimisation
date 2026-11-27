@@ -74,6 +74,11 @@ namespace vr::settings
 	inline constexpr choice_setting body_pose_mode{.name = "vr_bodyPoseMode",
 	                                              .values = {"inferred", "head_locked"},
 	                                              .label_keys = {"choice.inferredBody", "choice.headLockedBody"}};
+	inline constexpr choice_setting scope_render_mode{
+		.name = "vr_scopeRenderMode",
+		.values = {"on", "thermal_only", "off"},
+		.default_index = 0,
+		.label_keys = {"choice.scopeRenderOn", "choice.scopeRenderThermalOnly", "choice.scopeRenderOff"}};
 	inline constexpr choice_setting tracer_style{
 		.name = "vr_tracerStyle",
 		.values = {"native", "blaze", "cerulean", "royal", "anime", "independence_1776", "rainbow"},
@@ -84,6 +89,7 @@ namespace vr::settings
 	    handedness,
 	    desktop_eye,
 	    body_pose_mode,
+	    scope_render_mode,
 	    controller_pose_mode,
 	    weapon_grip_mode,
 	    melee_weapon,

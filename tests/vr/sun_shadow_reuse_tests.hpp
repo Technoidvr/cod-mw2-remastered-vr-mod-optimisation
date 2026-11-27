@@ -17,9 +17,14 @@ namespace sun_shadow_reuse_tests
 		check(!range.accepts(right, 0, 4, false), "sun visibility mismatch accepted"); right = range.left;
 		right.partitions[1][16] = 1;
 		check(!range.accepts(right, 0, 4, false), "sun light-view mismatch accepted"); right = range.left;
+		right.partitions[3][16] = 1;
+		check(!range.accepts(right, 0, 4, false), "sun 4-partition light-view mismatch accepted"); right = range.left;
 		check(!range.accepts(right, 1, 4, false) && !range.accepts(right, 0, 1, false), "sun ordinal range crossed native boundary");
 		check(!range.accepts(right, 0, 4, true), "modified sun image accepted");
 		range.open = true; check(!range.accepts(right, 0, 4, false), "unfinished left sun accepted");
+		range.open = false; range.begin = 0; range.end = 0;
+		check(range.accepts(right, 0, 0, false), "static-only zero-boundary sun pass was refused");
+		range.begin = 0; range.end = 2;
 
 		check(vr::engine_stereo_execution::install(context, 321) && vr::engine_stereo_output_merger::install(context, 321) &&
 			vr::engine_stereo_resource_ops::install(context, 321), "sun shared D3D observers not installed");
@@ -43,6 +48,13 @@ namespace sun_shadow_reuse_tests
 		sun::unwatch(); sun::watch(depth, context); sun::finish_left();
 		context->ClearDepthStencilView(alias.Get(), D3D11_CLEAR_DEPTH, .25f, 0);
 		check(sun::modified(), "alternate DSV writer was missed");
+		Microsoft::WRL::ComPtr<ID3D11Resource> color_res;
+		color->GetResource(&color_res);
+		sun::unwatch(); sun::watch(depth, context, color_res.Get()); sun::finish_left();
+		check(sun::watching(reinterpret_cast<std::uintptr_t>(depth), context,
+			reinterpret_cast<std::uintptr_t>(color_res.Get())), "dual-watched sun resources not reported active");
+		context->ClearRenderTargetView(color, black);
+		check(sun::modified(), "transparent sun target clear was missed under dual watch");
 		Microsoft::WRL::ComPtr<ID3D11DeviceContext> deferred;
 		Microsoft::WRL::ComPtr<ID3D11CommandList> commands;
 		check(SUCCEEDED(device->CreateDeferredContext(0, &deferred)) && SUCCEEDED(deferred->FinishCommandList(FALSE, &commands)), "sun command list creation failed");

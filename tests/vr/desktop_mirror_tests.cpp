@@ -399,10 +399,12 @@ vertex main(uint id : SV_VertexID) {
 		for (unsigned eye=0;eye<2;++eye)
 			require(session.eye_for_desktop(eye).pair_id == 101, "neither eye of a quarantined pair can be displayed");
 		vr::native_render_session::eye_target writing;
-		require(session.acquire_target(103, 0, writing), "reuse retired slot");
+		require(session.acquire_target(103, 0, writing), "consume third ring slot");
+		session.cancel_pair(103);
+		require(session.acquire_target(104, 0, writing), "reuse retired slot");
 		for (unsigned eye=0;eye<2;++eye)
 			require(!session.eye_for_desktop(eye).texture, "leased slot cannot leave either eye readable");
-		session.cancel_pair(103);
+		session.cancel_pair(104);
 		session.invalidate();
 		for (unsigned eye=0;eye<2;++eye)
 			require(!session.eye_for_desktop(eye).texture, "invalidation clears both mirror choices");

@@ -478,13 +478,14 @@ test("performance render scale, CAS sharpening, and hidden area mesh sit at the 
   const performance = basics.filter((field) => field.group === "settings.performance");
   assert.deepEqual(
     performance.map((field) => field.name),
-    ["vr_renderScale", "vr_sharpening", "vr_hiddenAreaMesh"],
+    ["vr_renderScale", "vr_sharpening", "vr_hiddenAreaMesh", "vr_scopeRenderMode"],
   );
   assert.equal(performance[0].type, "number");
   assert.equal(performance[0].unit, "unit.percent");
   assert.equal(performance[1].type, "number");
   assert.equal(performance[1].unit, "unit.percent");
   assert.equal(performance[2].type, "toggle");
+  assert.equal(performance[3].type, "choice");
   for (const catalog of Object.values(catalogs)) {
     for (const key of [
       "settings.performance",
@@ -556,4 +557,37 @@ test("shoulder holster spacing sits in Weapon interaction and round-trips in met
   assert.deepEqual(collect({ ...draft, vr_holsterBackWidth: "0.26" }, fixture), { vr_holsterBackWidth: 0.26 });
   for (const invalid of ["0.09", "0.41", "", "NaN"])
     assert.throws(() => collect({ ...draft, vr_holsterBackWidth: invalid }, fixture), SettingError);
+});
+
+test("scope render mode sits in Performance and round-trips choices across all locales", () => {
+  const field = fields.find((entry) => entry.name === "vr_scopeRenderMode")!;
+  assert.equal(field.category, "basics");
+  assert.equal(field.group, "settings.performance");
+  assert.equal(field.type, "choice");
+  for (const catalog of Object.values(catalogs)) {
+    assert.ok(catalog["settings.scopeRenderMode"]?.length);
+    assert.ok(catalog["settings.scopeRenderModeHint"]?.length);
+    assert.ok(catalog["choice.scopeRenderOn"]?.length);
+    assert.ok(catalog["choice.scopeRenderThermalOnly"]?.length);
+    assert.ok(catalog["choice.scopeRenderOff"]?.length);
+  }
+  const fixture = {
+    ...state,
+    values: { vr_scopeRenderMode: "on" },
+    choices: {
+      vr_scopeRenderMode: [
+        { value: "on", labelKey: "choice.scopeRenderOn" },
+        { value: "thermal_only", labelKey: "choice.scopeRenderThermalOnly" },
+        { value: "off", labelKey: "choice.scopeRenderOff" },
+      ],
+    },
+  } as SettingsState;
+  const draft = makeDraft(fixture.values, fixture.limits);
+  assert.equal(draft.vr_scopeRenderMode, "on");
+  assert.deepEqual(collect({ ...draft, vr_scopeRenderMode: "thermal_only" }, fixture), {
+    vr_scopeRenderMode: "thermal_only",
+  });
+  assert.deepEqual(collect({ ...draft, vr_scopeRenderMode: "off" }, fixture), {
+    vr_scopeRenderMode: "off",
+  });
 });

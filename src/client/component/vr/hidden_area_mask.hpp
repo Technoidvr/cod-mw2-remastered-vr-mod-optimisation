@@ -51,6 +51,11 @@ namespace vr::hidden_area_mask
 			Microsoft::WRL::ComPtr<ID3D11Buffer> ib;
 			UINT index_count{};
 			std::uint64_t built_revision{};
+			Microsoft::WRL::ComPtr<ID3D11CommandList> cached_commands;
+			ID3D11DepthStencilView* cached_dsv{};
+			std::uint32_t cached_width{};
+			std::uint32_t cached_height{};
+			std::uint64_t cached_revision{};
 		};
 
 		struct state
@@ -66,6 +71,7 @@ namespace vr::hidden_area_mask
 			std::array<std::uint64_t, 2> mesh_revision{};
 
 			Microsoft::WRL::ComPtr<ID3D11Device> device_;
+			ID3D11DeviceContext* immediate_context_{};
 			Microsoft::WRL::ComPtr<ID3D11DeviceContext> deferred_;
 			Microsoft::WRL::ComPtr<ID3D11VertexShader> vs_;
 			Microsoft::WRL::ComPtr<ID3D11InputLayout> layout_;
@@ -92,6 +98,7 @@ namespace vr::hidden_area_mask
 		inline void reset_device_locked(state& s) noexcept
 		{
 			s.device_.Reset();
+			s.immediate_context_ = nullptr;
 			s.deferred_.Reset();
 			s.vs_.Reset();
 			s.layout_.Reset();
@@ -100,10 +107,7 @@ namespace vr::hidden_area_mask
 			s.blend_.Reset();
 			for (auto& gpu : s.eye_gpu)
 			{
-				gpu.vb.Reset();
-				gpu.ib.Reset();
-				gpu.index_count = 0;
-				gpu.built_revision = 0;
+				gpu = {};
 			}
 		}
 
@@ -207,6 +211,11 @@ namespace vr::hidden_area_mask
 			gpu.ib.Reset();
 			gpu.index_count = 0;
 			gpu.built_revision = 0;
+			gpu.cached_commands.Reset();
+			gpu.cached_dsv = nullptr;
+			gpu.cached_width = 0;
+			gpu.cached_height = 0;
+			gpu.cached_revision = 0;
 
 			if (!s.device_ || !s.projection_valid[eye] || !s.projections[eye].valid() ||
 				s.vertices[eye].empty() || s.indices[eye].size() < 3 ||
@@ -414,6 +423,35 @@ namespace vr::hidden_area_mask
 			return false;
 		}
 
+		Microsoft::WRL::ComPtr<ID3D11CommandList> commands;
+		{
+			const std::lock_guard lock(s.mutex);
+			if (!s.has_mesh[eye].load(std::memory_order_acquire) ||
+				!s.projection_valid[eye] || !s.projections[eye].valid() ||
+				s.vertices[eye].empty() || s.indices[eye].size() < 3 ||
+				(s.indices[eye].size() % 3) != 0)
+			{
+				return false;
+			}
+			const auto& gpu = s.eye_gpu[eye];
+			const auto revision = s.mesh_revision[eye];
+			if (s.device_ != nullptr && s.immediate_context_ == context &&
+				gpu.built_revision == revision &&
+				gpu.cached_commands && gpu.cached_dsv == dsv &&
+				gpu.cached_width == expected_width &&
+				gpu.cached_height == expected_height &&
+				gpu.cached_revision == revision)
+			{
+				commands = gpu.cached_commands;
+			}
+		}
+		if (commands)
+		{
+			context->ExecuteCommandList(commands.Get(), TRUE);
+			s.stamps.fetch_add(1, std::memory_order_relaxed);
+			return true;
+		}
+
 		D3D11_DEPTH_STENCIL_VIEW_DESC dsv_desc{};
 		dsv->GetDesc(&dsv_desc);
 		if (dsv_desc.ViewDimension != D3D11_DSV_DIMENSION_TEXTURE2D ||
@@ -449,7 +487,6 @@ namespace vr::hidden_area_mask
 			return false;
 		}
 
-		Microsoft::WRL::ComPtr<ID3D11CommandList> commands;
 		{
 			const std::lock_guard lock(s.mutex);
 			if (!s.has_mesh[eye].load(std::memory_order_acquire) ||
@@ -483,36 +520,53 @@ namespace vr::hidden_area_mask
 				return false;
 			}
 
-			auto* const deferred = s.deferred_.Get();
-			deferred->OMSetRenderTargets(0, nullptr, dsv);
-			deferred->OMSetDepthStencilState(s.depth_.Get(), 0);
-			deferred->OMSetBlendState(s.blend_.Get(), nullptr, D3D11_DEFAULT_SAMPLE_MASK);
-			deferred->RSSetState(s.raster_.Get());
-			const D3D11_VIEWPORT vp{
-				0.0f, 0.0f,
-				static_cast<float>(expected_width),
-				static_cast<float>(expected_height),
-				0.0f, 1.0f};
-			deferred->RSSetViewports(1, &vp);
-			deferred->IASetInputLayout(s.layout_.Get());
-			deferred->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-			ID3D11Buffer* const vb = gpu.vb.Get();
-			const UINT stride = sizeof(vertex2);
-			const UINT offset = 0;
-			deferred->IASetVertexBuffers(0, 1, &vb, &stride, &offset);
-			deferred->IASetIndexBuffer(gpu.ib.Get(), DXGI_FORMAT_R32_UINT, 0);
-			deferred->VSSetShader(s.vs_.Get(), nullptr, 0);
-			deferred->PSSetShader(nullptr, nullptr, 0);
-			deferred->DrawIndexed(gpu.index_count, 0, 0);
-
-			if (FAILED(deferred->FinishCommandList(FALSE, &commands)) || !commands)
+			if (s.immediate_context_ == context &&
+				gpu.cached_commands && gpu.cached_dsv == dsv &&
+				gpu.cached_width == expected_width &&
+				gpu.cached_height == expected_height &&
+				gpu.cached_revision == revision)
 			{
-				deferred->ClearState();
-				return false;
+				commands = gpu.cached_commands;
 			}
-			if (!native_conversion_command_list::mark(commands.Get()))
+			else
 			{
-				return false;
+				auto* const deferred = s.deferred_.Get();
+				deferred->OMSetRenderTargets(0, nullptr, dsv);
+				deferred->OMSetDepthStencilState(s.depth_.Get(), 0);
+				deferred->OMSetBlendState(s.blend_.Get(), nullptr, D3D11_DEFAULT_SAMPLE_MASK);
+				deferred->RSSetState(s.raster_.Get());
+				const D3D11_VIEWPORT vp{
+					0.0f, 0.0f,
+					static_cast<float>(expected_width),
+					static_cast<float>(expected_height),
+					0.0f, 1.0f};
+				deferred->RSSetViewports(1, &vp);
+				deferred->IASetInputLayout(s.layout_.Get());
+				deferred->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+				ID3D11Buffer* const vb = gpu.vb.Get();
+				const UINT stride = sizeof(vertex2);
+				const UINT offset = 0;
+				deferred->IASetVertexBuffers(0, 1, &vb, &stride, &offset);
+				deferred->IASetIndexBuffer(gpu.ib.Get(), DXGI_FORMAT_R32_UINT, 0);
+				deferred->VSSetShader(s.vs_.Get(), nullptr, 0);
+				deferred->PSSetShader(nullptr, nullptr, 0);
+				deferred->DrawIndexed(gpu.index_count, 0, 0);
+
+				if (FAILED(deferred->FinishCommandList(FALSE, &commands)) || !commands)
+				{
+					deferred->ClearState();
+					return false;
+				}
+				if (!native_conversion_command_list::mark(commands.Get()))
+				{
+					return false;
+				}
+				s.immediate_context_ = context;
+				gpu.cached_commands = commands;
+				gpu.cached_dsv = dsv;
+				gpu.cached_width = expected_width;
+				gpu.cached_height = expected_height;
+				gpu.cached_revision = revision;
 			}
 		}
 

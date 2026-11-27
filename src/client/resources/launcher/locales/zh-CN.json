@@ -373,5 +373,10 @@
   "settings.hiddenAreaMesh": "OpenXR 隐藏区域遮罩",
   "settings.hiddenAreaMeshHint": "在深度缓冲中预先遮罩 OpenXR 镜片边缘不可见的角落，跳过不可见边缘像素的着色渲染，从而提升 GPU 性能。默认开启。",
   "settings.shoulderHolsterWidth": "肩部枪套间距",
-  "settings.shoulderHolsterWidthHint": "从身体中心到左右肩部枪套的水平距离（0.10 至 0.40 米，默认：0.20 米）。可在左右两肩各收纳一把双手武器。"
+  "settings.shoulderHolsterWidthHint": "从身体中心到左右肩部枪套的水平距离（0.10 至 0.40 米，默认：0.20 米）。可在左右两肩各收纳一把双手武器。",
+  "settings.scopeRenderMode": "瞄准镜 PIP 渲染",
+  "settings.scopeRenderModeHint": "控制高倍瞄准镜是否额外渲染第三视角 3D 场景。“仅热成像”对普通光学瞄具使用轻量同眼放大，同时保留原生热成像独立画面，在瞄准时大幅降低 CPU 与 GPU 开销。",
+  "choice.scopeRenderOn": "完整 PIP（全部瞄具）",
+  "choice.scopeRenderThermalOnly": "仅热成像（节省 CPU）",
+  "choice.scopeRenderOff": "关闭（同眼放大）"
 }

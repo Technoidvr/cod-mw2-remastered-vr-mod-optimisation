@@ -22,8 +22,17 @@ namespace vr::diagnostics::detail
 	{
 		const auto& sun = owner_pass_status.sun_reuse;
 		output << "  sun_shadow_reuse: eligible_left=" << sun.left << " skipped_right=" << sun.skipped
+			<< " skipped_aux=" << sun.skipped_auxiliary
 			<< " refused_right=" << sun.refused << " dirty_refusals=" << sun.dirty
-			<< " saved_dynamic_boundaries=" << sun.saved_boundaries << '\n';
+			<< " saved_dynamic_boundaries=" << sun.saved_boundaries
+			<< " reject(contract/cache/delegated/tex/post_left/mismatch)="
+			<< sun.reject_contract << '/' << sun.reject_cache << '/'
+			<< sun.reject_delegated << '/' << sun.reject_texture << '/'
+			<< sun.reject_post_left << '/' << sun.reject_right_mismatch
+			<< " last(tile/cfg/act/main/trans/tr_en/cache)="
+			<< sun.last_tile << '/' << sun.last_configured << '/' << sun.last_active << '/'
+			<< sun.last_main_target << '/' << sun.last_trans_target << '/'
+			<< sun.last_trans_enabled << '/' << sun.last_cache_enabled << '\n';
 		output << "  backend_owner_context_lock: acquires="
 			<< owner_pass_status.production_context_lock_acquires;
 		output << " failures=" << owner_pass_status.production_context_lock_failures;

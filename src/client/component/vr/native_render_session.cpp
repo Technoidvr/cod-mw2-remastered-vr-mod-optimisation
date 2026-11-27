@@ -864,7 +864,7 @@ float4 main(float4 position : SV_Position) : SV_Target
 		auto& conversion_source = conversion_sources_[source_index];
 		auto& conversion_source_view = conversion_source_views_[source_index];
 		if (context != context_.Get()) return fail(copy_failure::context);
-		if (!texture_uses_device(source, device_.Get()))
+		if (conversion_source.Get() != source && !texture_uses_device(source, device_.Get()))
 			return fail(copy_failure::source_device);
 		if (!conversion_deferred_context_)
 			return fail(copy_failure::deferred_context);

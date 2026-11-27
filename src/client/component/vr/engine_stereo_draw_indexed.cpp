@@ -283,6 +283,15 @@ namespace vr::engine_stereo_draw_indexed
 				live_installed.load(std::memory_order_relaxed) &&
 				reinterpret_cast<std::uintptr_t>(context) == live_context.load(std::memory_order_relaxed)) ?
 				copy_candidate : nullptr;
+			if (observer == nullptr && copy == nullptr && active_transaction == nullptr &&
+				active_replay == nullptr && !region_capture::enabled() &&
+				!engine_stereo_execution::needs_draw_indexed_observation())
+			{
+				inside_draw = true;
+				original(context, index_count, start_index_location, base_vertex_location);
+				inside_draw = false;
+				return;
+			}
 			inside_draw = true;
 			const auto exit = gsl::finally([] { inside_draw = false; });
 			region_capture::draw_indexed(index_count);

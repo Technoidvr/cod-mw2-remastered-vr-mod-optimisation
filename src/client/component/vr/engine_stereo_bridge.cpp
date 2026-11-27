@@ -253,6 +253,8 @@ namespace vr::engine_stereo_bridge
 		if (published_taken && next_family.valid &&
 			(published_eye_mask == 0 || published_eye_mask == 0x3u))
 			promote_next_locked();
+		if (published_taken && !next_family.valid && published_eye_mask == 0x3u)
+			return false;
 		if (!snapshot_render_configs_locked(output)) return false;
 		published_taken = true;
 		return true;

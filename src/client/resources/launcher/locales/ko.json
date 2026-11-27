@@ -373,5 +373,10 @@
   "settings.hiddenAreaMesh": "OpenXR 숨김 영역 메시",
   "settings.hiddenAreaMeshHint": "보이지 않는 OpenXR 렌즈 모서리를 깊이 버퍼에서 미리 마스킹하여 가장자리 픽셀 렌더링을 건너뜁니다. GPU 성능이 향상되며 기본적으로 켜져 있습니다.",
   "settings.shoulderHolsterWidth": "어깨 홀스터 간격",
-  "settings.shoulderHolsterWidthHint": "몸 중앙에서 좌우 어깨 홀스터까지의 수평 거리(0.10~0.40 m, 기본값: 0.20 m)입니다. 양쪽 어깨에 각각 양손 무기를 1정씩 보관할 수 있습니다."
+  "settings.shoulderHolsterWidthHint": "몸 중앙에서 좌우 어깨 홀스터까지의 수평 거리(0.10~0.40 m, 기본값: 0.20 m)입니다. 양쪽 어깨에 각각 양손 무기를 1정씩 보관할 수 있습니다.",
+  "settings.scopeRenderMode": "조준경 PIP 렌더링",
+  "settings.scopeRenderModeHint": "배율 조준경에 3번째 3D 장면을 추가 렌더링할지 제어합니다. '열화상 전용'은 일반 조준경에 가벼운 단안 줌을 사용하고 열화상 조준경만 독립 렌더링하여 조준 시 CPU/GPU 부하를 크게 줄입니다.",
+  "choice.scopeRenderOn": "전체 PIP (모든 조준경)",
+  "choice.scopeRenderThermalOnly": "열화상 전용 (CPU 절약)",
+  "choice.scopeRenderOff": "끄기 (단안 확대)"
 }

@@ -373,5 +373,10 @@
   "settings.hiddenAreaMesh": "OpenXR hidden area mesh",
   "settings.hiddenAreaMeshHint": "Masks invisible OpenXR lens corners in depth so edge pixels are skipped during rendering. Improves GPU performance; on by default.",
   "settings.shoulderHolsterWidth": "Shoulder holster spacing",
-  "settings.shoulderHolsterWidthHint": "Horizontal distance from center to each left/right shoulder holster (0.10 to 0.40 m, default: 0.20 m). Allows stowing one two-handed weapon on each shoulder."
+  "settings.shoulderHolsterWidthHint": "Horizontal distance from center to each left/right shoulder holster (0.10 to 0.40 m, default: 0.20 m). Allows stowing one two-handed weapon on each shoulder.",
+  "settings.scopeRenderMode": "Scope PIP rendering",
+  "settings.scopeRenderModeHint": "Controls whether magnified scopes render an extra 3D scene pass. Choosing Thermal only uses a lightweight same-eye zoom on regular scopes while keeping native thermal optics active, saving major CPU/GPU cost when aiming.",
+  "choice.scopeRenderOn": "Full PIP (all scopes)",
+  "choice.scopeRenderThermalOnly": "Thermal only (saves CPU)",
+  "choice.scopeRenderOff": "Off (same-eye zoom)"
 }

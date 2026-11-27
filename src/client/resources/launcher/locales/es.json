@@ -373,5 +373,10 @@
   "settings.hiddenAreaMesh": "Malla de área oculta OpenXR",
   "settings.hiddenAreaMeshHint": "Enmascara en profundidad las esquinas invisibles de las lentes OpenXR para omitir los píxeles de los bordes durante el renderizado. Mejora el rendimiento de la GPU; activado por defecto.",
   "settings.shoulderHolsterWidth": "Separación de fundas de hombro",
-  "settings.shoulderHolsterWidthHint": "Distancia horizontal desde el centro hasta cada funda de hombro izquierda/derecha (0,10 a 0,40 m, por defecto: 0,20 m). Permite guardar un arma a dos manos en cada hombro."
+  "settings.shoulderHolsterWidthHint": "Distancia horizontal desde el centro hasta cada funda de hombro izquierda/derecha (0,10 a 0,40 m, por defecto: 0,20 m). Permite guardar un arma a dos manos en cada hombro.",
+  "settings.scopeRenderMode": "Renderizado PIP de miras",
+  "settings.scopeRenderModeHint": "Controla si las miras con aumento renderizan una tercera vista 3D. «Solo térmicas» usa un zoom ligero en el mismo ojo para miras ópticas y conserva la vista térmica nativa, ahorrando mucha CPU y GPU al apuntar.",
+  "choice.scopeRenderOn": "PIP completo (todas las miras)",
+  "choice.scopeRenderThermalOnly": "Solo térmicas (ahorra CPU)",
+  "choice.scopeRenderOff": "Desactivado (zoom mismo ojo)"
 }

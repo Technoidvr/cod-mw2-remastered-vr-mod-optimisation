@@ -849,10 +849,13 @@ namespace
 
 		const auto first = publish_pair(101);
 		const auto second = publish_pair(102);
+		const auto third_slot = publish_pair(103);
 		vr::tests::require(first[0].color.Get() != second[0].color.Get() &&
-			first[1].color.Get() != second[1].color.Get(),
-			"native direct ring aliased its two ownership slots");
-		for (const auto& pair : {first, second})
+			first[1].color.Get() != second[1].color.Get() &&
+			first[0].color.Get() != third_slot[0].color.Get() &&
+			second[0].color.Get() != third_slot[0].color.Get(),
+			"native direct ring aliased its three ownership slots");
+		for (const auto& pair : {first, second, third_slot})
 		{
 			for (const auto& eye : pair)
 			{
@@ -867,19 +870,20 @@ namespace
 		}
 
 		vr::native_render_session::eye_target exhausted;
-		vr::tests::require(!session.acquire_target(103, 0, exhausted),
+		vr::tests::require(!session.acquire_target(105, 0, exhausted),
 			"native ring reused a target before its submitted owner retired");
 		vr::tests::require(session.release_pair(101), "published pair 101 did not release");
-		const auto third = publish_pair(104);
-		vr::tests::require(third[0].color.Get() == first[0].color.Get() &&
-			third[1].color.Get() == first[1].color.Get(),
+		const auto fourth = publish_pair(104);
+		vr::tests::require(fourth[0].color.Get() == first[0].color.Get() &&
+			fourth[1].color.Get() == first[1].color.Get(),
 			"retiring a pair did not make that exact ring slot reusable");
 		vr::tests::require(session.release_pair(102), "published pair 102 did not release");
+		vr::tests::require(session.release_pair(103), "published pair 103 did not release");
 		vr::tests::require(session.release_pair(104), "published pair 104 did not release");
 
 		const auto status = session.get_status();
-		vr::tests::require(status.pair_acquires == baseline.pair_acquires + 3 &&
-			status.pair_releases == baseline.pair_releases + 3 &&
+		vr::tests::require(status.pair_acquires == baseline.pair_acquires + 4 &&
+			status.pair_releases == baseline.pair_releases + 4 &&
 			status.pair_exhaustions == baseline.pair_exhaustions + 1,
 			"native direct ring ownership counters are inconsistent");
 		session.invalidate(graphics.generation);
@@ -1327,8 +1331,9 @@ namespace
 			vr::tests::require(session.release_pair(pair), "thermal pair retirement failed");
 		}
 		const auto transition_status = session.get_status();
+		// 3 ring pairs * 2 eyes * 2 native targets (targets 4 & 5) = 12 cached command lists.
 		vr::tests::require(transition_status.source_view_creations == transition_baseline.source_view_creations + 2 &&
-			transition_status.command_list_builds == transition_baseline.command_list_builds + 8 &&
+			transition_status.command_list_builds == transition_baseline.command_list_builds + 12 &&
 			transition_status.command_list_executions == transition_baseline.command_list_executions + 24 &&
 			transition_status.conversion_failures == transition_baseline.conversion_failures,
 			"thermal switching rebuilt stable GPU caches or lost an eye");

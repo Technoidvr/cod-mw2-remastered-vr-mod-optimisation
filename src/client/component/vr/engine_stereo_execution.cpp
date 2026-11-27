@@ -1579,6 +1579,11 @@ namespace vr::engine_stereo_execution
 		}
 	}
 
+	bool needs_draw_indexed_observation() noexcept
+	{
+		return needs_observation(api::draw_indexed);
+	}
+
 	bool bootstrap_complete() noexcept
 	{
 		return current_state.load(std::memory_order_acquire) == gate_state::complete;

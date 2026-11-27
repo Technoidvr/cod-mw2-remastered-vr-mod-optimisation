@@ -184,6 +184,14 @@
     "description": "settings.hiddenAreaMeshHint"
   },
   {
+    "name": "vr_scopeRenderMode",
+    "category": "basics",
+    "group": "settings.performance",
+    "label": "settings.scopeRenderMode",
+    "type": "choice",
+    "description": "settings.scopeRenderModeHint"
+  },
+  {
     "name": "vr_worldScale",
     "category": "calibration",
     "group": "settings.worldScale",

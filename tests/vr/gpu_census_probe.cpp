@@ -2177,6 +2177,23 @@ int main()
 		fail("resident backend and arena use bounded page queries");
 	if (!vr::engine_stereo_dynamic_arena::restore(operation_displaced, dynamic_arena_error))
 		fail("restore after coalesced range validation");
+	{
+		vr::engine_stereo_dynamic_arena::validation_scope owner_scope;
+		const auto scoped_queries_before = vr::engine_stereo_dynamic_arena::validation_queries_for_tests();
+		for (int iter = 0; iter < 3; ++iter)
+		{
+			if (!vr::engine_stereo_dynamic_arena::capture_backend(backend_state_a,
+					restored, dynamic_arena_error, owner_scope) ||
+				!vr::engine_stereo_dynamic_arena::replace_backend(backend_state_a,
+					left_boundaries[0], operation_displaced, dynamic_arena_error, owner_scope) ||
+				!vr::engine_stereo_dynamic_arena::restore(operation_displaced,
+					dynamic_arena_error, owner_scope))
+				fail("scoped validation loop failed");
+		}
+		if (vr::engine_stereo_dynamic_arena::validation_queries_for_tests() - scoped_queries_before != 2)
+			fail("validation_scope did not eliminate repeat kernel page queries within owner scope");
+		owner_scope.reset();
+	}
 	const auto descriptor_page = (reinterpret_cast<std::uintptr_t>(arena_data_a) +
 		vr::engine_stereo_dynamic_arena::code_trans_offset) & ~(std::uintptr_t{page_size} - 1);
 	DWORD old_descriptor_protection{};

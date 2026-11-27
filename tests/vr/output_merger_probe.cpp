@@ -207,6 +207,14 @@ namespace
 		{
 			fail("stamp_eye_depth failed for valid 64x64 DSV");
 		}
+		if (!vr::hidden_area_mask::stamp_eye_depth(context, dsv64.Get(), 0, 64, 64))
+		{
+			fail("stamp_eye_depth cached replay failed for valid 64x64 DSV");
+		}
+		if (vr::hidden_area_mask::stamp_eye_depth(context, dsv64.Get(), 0, 32, 32))
+		{
+			fail("stamp_eye_depth cached path accepted mismatched expected extent");
+		}
 
 		Microsoft::WRL::ComPtr<ID3D11DepthStencilView> restored_dsv;
 		context->OMGetRenderTargets(0, nullptr, &restored_dsv);
@@ -240,7 +248,7 @@ namespace
 		}
 
 		const auto before_clear = vr::hidden_area_mask::get_diagnostics();
-		if (before_clear.stamps != 1 || !before_clear.has_mesh[0] || before_clear.has_mesh[1] ||
+		if (before_clear.stamps != 2 || !before_clear.has_mesh[0] || before_clear.has_mesh[1] ||
 			before_clear.eye_triangles[0] != 1 || before_clear.eye_triangles[1] != 0)
 		{
 			fail("hidden area mask diagnostics mismatch after stamp");

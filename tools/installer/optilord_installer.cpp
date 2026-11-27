@@ -92,8 +92,8 @@ ui_strings make_ui_strings() noexcept
     {
         return ui_strings{
             true,
-            L"OptiLord v0.6.0 \u2014 Installateur & D\u00E9sinstallateur Propre",
-            L"OptiLord v0.6.0 \u2014 Installateur & D\u00E9sinstallateur Propre",
+            L"OptiLord v0.7.0 \u2014 Installateur & D\u00E9sinstallateur Propre",
+            L"OptiLord v0.7.0 \u2014 Installateur & D\u00E9sinstallateur Propre",
             L"Bas\u00E9 sur Overlord VR Beta 8 par Aeka0 \u2014 Supprime automatiquement les anciens binaires avant mise \u00E0 jour",
             L"Dossier du jeu Call of Duty: MW2 Campaign Remastered (MW2CR) :",
             L"Parcourir...",
@@ -114,7 +114,7 @@ ui_strings make_ui_strings() noexcept
             L"Confirmer la d\u00E9sinstallation",
             L"Supprimer tous les fichiers OptiLord / Overlord de ce dossier ?\nLes fichiers du jeu et les sauvegardes players2/ seront conserv\u00E9s.",
             L"Installation termin\u00E9e",
-            L"OptiLord v0.6.0 a \u00E9t\u00E9 install\u00E9 proprement.",
+            L"OptiLord v0.7.0 a \u00E9t\u00E9 install\u00E9 proprement.",
             L"D\u00E9sinstallation termin\u00E9e",
             L"OptiLord a \u00E9t\u00E9 supprim\u00E9 proprement. Vos fichiers MW2CR et sauvegardes players2/ sont intacts.",
             L"Erreur",
@@ -124,8 +124,8 @@ ui_strings make_ui_strings() noexcept
 
     return ui_strings{
         false,
-        L"OptiLord v0.6.0 \u2014 Clean Installer & Uninstaller",
-        L"OptiLord v0.6.0 \u2014 Clean Installer & Uninstaller",
+        L"OptiLord v0.7.0 \u2014 Clean Installer & Uninstaller",
+        L"OptiLord v0.7.0 \u2014 Clean Installer & Uninstaller",
         L"Based on Overlord VR Beta 8 by Aeka0 \u2014 Automatically removes stale Overlord binaries before updating",
         L"Call of Duty: MW2 Campaign Remastered (MW2CR) folder:",
         L"Browse...",
@@ -146,7 +146,7 @@ ui_strings make_ui_strings() noexcept
         L"Confirm Uninstall",
         L"Remove all OptiLord / Overlord mod files from this folder?\nGame files and players2/ campaign saves will be kept.",
         L"Installation Complete",
-        L"OptiLord v0.6.0 has been cleanly installed.",
+        L"OptiLord v0.7.0 has been cleanly installed.",
         L"Uninstall Complete",
         L"OptiLord has been cleanly removed. Your MW2CR files and players2/ saves remain intact.",
         L"Error",
@@ -310,7 +310,7 @@ void err_line(std::wstring_view line)
 
 void print_cli_help()
 {
-    out_line(L"OptiLord v0.6.0 Installer & Uninstaller");
+    out_line(L"OptiLord v0.7.0 Installer & Uninstaller");
     out_line(L"Usage:");
     out_line(L"  OptiLord-Setup.exe                                         Open installer GUI");
     out_line(L"  OptiLord-Setup.exe --detect                                List detected MW2CR directories");

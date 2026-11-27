@@ -311,6 +311,7 @@ namespace vr::engine_stereo_owner_pass
 	{
 		engine_stereo_sun_shadow::range sun_shadow;
 		Microsoft::WRL::ComPtr<ID3D11Texture2D> sun_texture;
+		Microsoft::WRL::ComPtr<ID3D11Texture2D> sun_transparent_texture;
 		bool active{};
 		bool production{};
 		bool failed{};
@@ -379,6 +380,7 @@ namespace vr::engine_stereo_owner_pass
 		engine_stereo_dynamic_upload::cycle dynamic_upload;
 		void (*dynamic_upload_original)(void*){};
 		engine_stereo_dynamic_arena::index_base_snapshot dynamic_index_restore{};
+		engine_stereo_dynamic_arena::validation_scope dynamic_arena_validation{};
 		std::uint32_t dynamic_index_left_count{};
 		std::uint32_t dynamic_index_right_count{};
 		dynamic_index_trace dynamic_index_calls;

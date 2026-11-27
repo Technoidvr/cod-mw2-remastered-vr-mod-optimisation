@@ -208,7 +208,7 @@ namespace vr::native_render_session
 		void invalidate_locked() noexcept;
 		[[nodiscard]] bool terminate_unpublished_pair_locked(std::uint64_t pair_id,
 			bool failed) noexcept;
-		static constexpr std::size_t pair_count = 2;
+		static constexpr std::size_t pair_count = 3;
 		std::array<target_pair, pair_count> pairs_{};
 		std::size_t next_pair_index_{};
 		std::uint64_t device_generation_{};

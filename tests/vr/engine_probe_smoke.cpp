@@ -719,6 +719,10 @@ namespace
 		vr::tests::require(take_view_family_for_frontend(eyes),"queued family could not be taken");
 		vr::tests::require(get_view_family(family) && family.frame_id==43 && family.publication==2,
 			"queued family was not promoted after the older family was consumed");
+		record_stereo_eye(eyes[0],256,256,256,256);
+		record_stereo_eye(eyes[1],256,256,256,256);
+		vr::tests::require(!take_view_family_for_frontend(eyes),
+			"completed family without queued successor was re-issued to frontend");
 		invalidate_views_for(42);
 		vr::tests::require(get_view_family(family) && family.frame_id==43,
 			"retiring an older family invalidated the queued family");

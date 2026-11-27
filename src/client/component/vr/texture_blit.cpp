@@ -84,6 +84,9 @@ float4 main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 	void renderer::reset() noexcept
 	{
 		sources_ = {};
+		commands_ = {};
+		last_parameters_ = {};
+		has_last_parameters_ = false;
 		validated_device_.Reset();
 		device_.Reset();
 		deferred_.Reset();
@@ -95,6 +98,7 @@ float4 main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 		blend_.Reset();
 		parameters_.Reset();
 		cursor_ = 0;
+		command_cursor_ = 0;
 	}
 	bool renderer::ensure(ID3D11Device* device, std::string& error)
 	{
@@ -306,16 +310,13 @@ float4 main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 				cached->format = format;
 			}
 			cached->view = std::move(shader_view);
+			for (auto& cmd : commands_)
+			{
+				if (cmd.source == source && cmd.format == format)
+					cmd = {};
+			}
 		}
-		const struct
-		{
-			unsigned mode;
-			float dim;
-			float sharpness;
-			float padding0;
-			float rcp_source_size[2];
-			float padding1[2];
-		} parameters{
+		const shader_parameters parameters{
 		    static_cast<unsigned>(format),
 		    clamped_dim,
 		    clamped_sharpness,
@@ -323,35 +324,54 @@ float4 main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 		    {1.0f / static_cast<float>((std::max)(1u, src_desc.Width)),
 		     1.0f / static_cast<float>((std::max)(1u, src_desc.Height))},
 		    {0.f, 0.f}};
-		static_assert(sizeof(parameters) == 32);
-		deferred_->UpdateSubresource(parameters_.Get(), 0, nullptr, &parameters, 0, 0);
-		const float blend[4]{};
-		deferred_->OMSetBlendState(blend_.Get(), blend, D3D11_DEFAULT_SAMPLE_MASK);
-		deferred_->OMSetDepthStencilState(depth_.Get(), 0);
-		deferred_->OMSetRenderTargets(1, &destination, nullptr);
-		deferred_->RSSetState(rasterizer_.Get());
-		const D3D11_VIEWPORT viewport{0, 0, float(width), float(height), 0, 1};
-		deferred_->RSSetViewports(1, &viewport);
-		deferred_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-		deferred_->VSSetShader(vertex_.Get(), nullptr, 0);
-		deferred_->PSSetShader(pixel_.Get(), nullptr, 0);
-		deferred_->PSSetShaderResources(0, 1, cached->view.GetAddressOf());
-		deferred_->PSSetSamplers(0, 1, sampler_.GetAddressOf());
-		deferred_->PSSetConstantBuffers(0, 1, parameters_.GetAddressOf());
-		deferred_->Draw(3, 0);
 		Microsoft::WRL::ComPtr<ID3D11CommandList> commands;
-		if (FAILED(deferred_->FinishCommandList(FALSE, &commands)))
+		for (const auto& cmd : commands_)
 		{
-			deferred_->ClearState();
-			error = "texture blit recording failed";
-			return false;
+			if (cmd.list && cmd.source == source && cmd.destination == destination &&
+			    cmd.width == width && cmd.height == height && cmd.format == format)
+			{
+				commands = cmd.list;
+				break;
+			}
 		}
-		if (!native_conversion_command_list::mark(commands.Get()))
+		if (!commands)
 		{
-			error = "texture blit command ownership marker failed";
-			return false;
+			const float blend[4]{};
+			deferred_->OMSetBlendState(blend_.Get(), blend, D3D11_DEFAULT_SAMPLE_MASK);
+			deferred_->OMSetDepthStencilState(depth_.Get(), 0);
+			deferred_->OMSetRenderTargets(1, &destination, nullptr);
+			deferred_->RSSetState(rasterizer_.Get());
+			const D3D11_VIEWPORT viewport{0, 0, float(width), float(height), 0, 1};
+			deferred_->RSSetViewports(1, &viewport);
+			deferred_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+			deferred_->VSSetShader(vertex_.Get(), nullptr, 0);
+			deferred_->PSSetShader(pixel_.Get(), nullptr, 0);
+			deferred_->PSSetShaderResources(0, 1, cached->view.GetAddressOf());
+			deferred_->PSSetSamplers(0, 1, sampler_.GetAddressOf());
+			deferred_->PSSetConstantBuffers(0, 1, parameters_.GetAddressOf());
+			deferred_->Draw(3, 0);
+			if (FAILED(deferred_->FinishCommandList(FALSE, &commands)))
+			{
+				deferred_->ClearState();
+				error = "texture blit recording failed";
+				return false;
+			}
+			if (!native_conversion_command_list::mark(commands.Get()))
+			{
+				error = "texture blit command ownership marker failed";
+				return false;
+			}
+			commands_[command_cursor_++ % commands_.size()] = {
+			    source, destination, width, height, format, commands};
 		}
 		const auto queue = d3d11::acquire_gpu_queue_interop();
+		if (!has_last_parameters_ ||
+		    std::memcmp(&last_parameters_, &parameters, sizeof(parameters)) != 0)
+		{
+			graphics.context->UpdateSubresource(parameters_.Get(), 0, nullptr, &parameters, 0, 0);
+			last_parameters_ = parameters;
+			has_last_parameters_ = true;
+		}
 		graphics.context->ExecuteCommandList(commands.Get(), TRUE);
 		if (FAILED(graphics.device->GetDeviceRemovedReason()))
 		{

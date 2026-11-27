@@ -4,6 +4,26 @@ All notable changes in **OptiLord** (maintained by **TechnoidVR**, based on **Ov
 
 ---
 
+## [0.7.0] — OptiLord (Generalized Sun Shadow Reuse, CommandList Caching & PIP Scope Optimization)
+
+### Generalized Sun Shadow Reuse & Diagnostics (`v0.7.0`)
+- **Multi-Resolution, 1–4 Cascade, Transparent & Auxiliary Sun Shadow Reuse (`engine_stereo_sun_shadow.{hpp,cpp}`, `engine_stereo_owner_pass.{hpp,cpp}`, `diagnostics/owner_status.cpp`)**:
+  - Removed hardcoded `2048px` / `3 configured` / `2 active` / `transparent_enabled == 0` / `main_target == 26` gates in `engine_stereo_sun_shadow::snapshot()`, expanding `inputs` to `max_partitions = 4` and supporting shadow tile resolutions `{512, 1024, 2048, 4096}`, configured `{2, 3, 4}` cascades, active `1..configured`, main targets `{26, 27}`, and optional transparent sun-shadow targets `{28, 29}` with dual watched-resource tracking.
+  - Allowed static-only sun-shadow passes (`end >= begin` in `range::accepts()`) and extended sun-shadow reuse to auxiliary scope views (keeping the watcher armed across `auxiliary -> right eye` and invalidating cleanly on native execution).
+  - Extended `sun_shadow_reuse:` telemetry in `owner_status.cpp` with `skipped_aux`, `reject(contract/cache/delegated/tex/post_left/mismatch)`, and `last(tile/cfg/act/main/trans/tr_en/cache)` diagnostics.
+
+### DX11 CommandList Caching, Scoped Validation & Hot-Path Relief (`v0.7.0`)
+- **Cached `ID3D11CommandList` Playback (`hidden_area_mask.hpp`, `texture_blit.{hpp,cpp}`)**: Cached recorded deferred command lists in `hidden_area_mask::stamp_eye_depth()` per `(context, dsv, width, height, revision)` and in `texture_blit::renderer::draw()` per `(source, destination, width, height, format)` (updating the 32-byte constant buffer on the immediate context only when parameters change), eliminating per-frame COM descriptor queries and driver command-list compilations.
+- **Scoped Dynamic-Arena Page Validation (`engine_stereo_dynamic_arena.{hpp,cpp}`, `engine_stereo_owner_pass.{hpp,cpp}`)**: Introduced `validation_scope` reused within each synchronous owner view (reset in `begin_view()`, `end()`, and `retire_transaction_preserving_records()`), eliminating redundant `K32QueryWorkingSetEx` kernel syscalls across dynamic-index boundaries.
+- **Idle `draw_stub` Fast-Path & Cached Ring Source Device Check (`engine_stereo_execution.{hpp,cpp}`, `engine_stereo_draw_indexed.cpp`, `native_render_session.cpp`)**: Added `needs_draw_indexed_observation()` fast-path bypass in `draw_stub()` when no draw observer or transaction is active, and skipped redundant `texture_uses_device()` queries in `copy_eye()` when `conversion_source.Get() == source`.
+
+### Frame Pacing & PIP Scope Cost Reduction (`v0.7.0`)
+- **Triple-Buffered Stereo Ring & Stale-Family Guard (`native_render_session.hpp`, `engine_stereo_bridge.cpp`)**: Expanded `native_render_session::pair_count` from `2` to `3` to prevent `admit_pair` slot starvation during pipelined OpenXR capture, and stopped `take_view_family_for_frontend()` from re-issuing already completed (`0x3u`) families when `!next_family.valid` (cutting spurious `frontend_pair_unavailable` mono frames).
+- **PIP Scope Modes & Effect Stripping (`settings.hpp`, `gameplay/optic_runtime.cpp`, `native_post_aa.cpp`, `engine_stereo_owner_pass.cpp`, `settings-schema.json`, `locales/*.json`)**: Added `vr_scopeRenderMode` (`on`, `thermal_only`, `off`) in **VR Settings → Basics → Performance** across all 9 launcher languages (`93` settings total), skipped Post-AA (`native_post_aa.cpp`) on `auxiliary_scene::view_index`, and zeroed SSR on non-thermal `auxiliary_record` scope views.
+
+### Documentation, Packaging & Installer (`v0.7.0`)
+- Bumped `version.json`, installer metadata (`optilord_installer.{cpp,rc,manifest}`), and repository docs (`CHANGELOG.md`, `OPTIMIZATIONS.md`, `OPTIMIZATIONS_FR.md`, `README.md`) to **`0.7.0`**.
+
 ## [0.6.0] — OptiLord (Dual Shoulder Holsters, Trigger Zone Fixes & Multi-Zone Hover Haptics)
 
 ### Dual Shoulder Holsters (`v0.6.0`)
