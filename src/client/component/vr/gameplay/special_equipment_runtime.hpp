@@ -4,6 +4,7 @@
 namespace vr::gameplay::equipment::special
 {
 	bool active()noexcept;
+	bool abdomen_ready()noexcept;
 	void collect_interactions(const hand_interaction::frame&)noexcept;
 	void update_interactions()noexcept;
 	void report_interactions()noexcept;

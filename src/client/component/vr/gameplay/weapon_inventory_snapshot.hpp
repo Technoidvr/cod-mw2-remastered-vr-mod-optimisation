@@ -29,14 +29,14 @@ namespace vr::gameplay::weapons::inventory_snapshot
     };
     struct snapshot
     {
-        static constexpr int schema=1;
+        static constexpr int schema=2;
         std::array<weapon,carry::inventory::capacity> weapons{};
         int count{},selected{-1}; // -1 explicitly preserves empty selection.
     };
     inline bool shape_valid(const snapshot& s) noexcept
     {
         if(s.count<0 || s.count>int(s.weapons.size()) || s.selected<-1 || s.selected>=s.count)return false;
-        unsigned hands{};std::array<bool,3> slots{};
+        unsigned hands{};std::array<bool,4> slots{};
         for(int i=0;i<s.count;++i)
         {
             const auto& w=s.weapons[i];
@@ -58,7 +58,7 @@ namespace vr::gameplay::weapons::inventory_snapshot
             }
             else if(w.rear!=hand::none || w.support!=hand::none)return false;
             if(carry::ordinary_slot(w.location))
-            {const auto n=int(w.location)-int(carry::location::left_waist);if(slots[n])return false;slots[n]=true;}
+            {const auto n=int(w.location)-int(carry::location::left_waist);if(n<0 || n>=int(slots.size()) || slots[n])return false;slots[n]=true;}
             if(w.location==carry::location::overflow && !w.overflow)return false;
             if(w.has_module && (!std::isfinite(w.module_travel) || w.module_travel<0 || w.module_travel>1))return false;
         }

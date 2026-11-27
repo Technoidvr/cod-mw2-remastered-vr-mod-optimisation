@@ -392,6 +392,15 @@ namespace vr::gameplay::grenades
 	}
 	bool occupies_slot(unsigned slot)noexcept
 	{const std::lock_guard lock(mutex);return slot<2 && published.items[slot].value.held();}
+	bool chest_slot_ready(unsigned slot)noexcept
+	{
+		if(slot>=chest_count || !running() || !sequences::chest_equipment_visible())return false;
+		snapshot pub;{const std::lock_guard lock(mutex);pub=published;}
+		if(!pub.hands_ready)return false;
+		const auto tokens=selected();const auto& state=items[slot].value;native::descriptor desc;
+		if(state.held() || !native::describe(tokens[slot],desc) || !pub.assets[unsigned(desc.type)] || !native::available(tokens[slot]))return false;
+		return !std::any_of(items.begin(),items.end(),[&](const held& other){return other.value.held() && other.value.type==desc.type;});
+	}
 	void report_interactions()noexcept
 	{
 		for(unsigned i=0;i<held_count;++i)

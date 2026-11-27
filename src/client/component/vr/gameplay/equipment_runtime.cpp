@@ -258,6 +258,13 @@ namespace vr::gameplay::equipment
 		}
 	}
 	bool held_by(hand h) noexcept {return running() && hand_interaction::has(h,hand_interaction::domain::knife);}
+	bool chest_knife_ready() noexcept
+	{
+		if (cheats::waist_pickaxes() || !sequences::chest_equipment_visible() || !running() || !knife_weapon || !model)
+			return false;
+		const std::lock_guard lock(mutex);
+		return published.hand_ready && !vr::valid_hand(published.knife.holder);
+	}
 	std::uint64_t fist_revision(hand h) noexcept
 	{return vr::valid_hand(h) && running() ? fist_lease[unsigned(h)].load() : 0;}
 	bool current_knife(hand h,std::uint64_t revision,std::uint64_t reference) noexcept

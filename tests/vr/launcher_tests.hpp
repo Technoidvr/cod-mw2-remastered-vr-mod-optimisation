@@ -93,8 +93,8 @@ namespace launcher_tests
 			check(release.action==carry::outcome::carry_only && owned.find(id)->owner.support==hand::left && !owned.find(id)->owner.can_fire(),
 				"releasing the right control never promotes the left support");
 			check(owned.control(id,hand::right) && owned.invariant(),"right hand can reacquire the carried launcher");
-			owned.release(id,3,carry::location::back,true,[](const auto&){return false;});
-			check(owned.draw(carry::location::back,hand::left).action==carry::outcome::drawn && !owned.find(id)->owner.can_fire(),
+			owned.release(id,3,carry::location::left_back,true,[](const auto&){return false;});
+			check(owned.draw(carry::location::left_back,hand::left).action==carry::outcome::drawn && !owned.find(id)->owner.can_fire(),
 				"left holster draw retains support-only authority");
 		}
 		for(hand actor:{hand::left,hand::right})

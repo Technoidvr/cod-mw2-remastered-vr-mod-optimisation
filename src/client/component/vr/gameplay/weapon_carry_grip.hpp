@@ -41,11 +41,13 @@ namespace vr::gameplay::weapons::carry
 	{
 		unsigned occupied{};
 		if (owned.in_slot(location::left_waist))
-			occupied |= 1;
+			occupied |= 1u;
 		if (owned.in_slot(location::right_waist))
-			occupied |= 2;
-		if (owned.next_back())
-			occupied |= 4;
+			occupied |= 2u;
+		if (owned.next_back(location::left_back))
+			occupied |= 4u;
+		if (owned.next_back(location::right_back))
+			occupied |= 8u;
 		return hit(slots, point, occupied);
 	}
 	struct control_contact

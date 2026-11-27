@@ -8,9 +8,11 @@
 namespace vr::gameplay::weapons::carry
 {
 	// Physical locations belong to instances; native definition ownership is a projection.
-	enum class location { absent, held, left_waist, right_waist, back, overflow, abdominal };
+	enum class location { absent, held, left_waist, right_waist, left_back, right_back, overflow, abdominal };
+	inline bool back_slot(location p) noexcept
+	{ return p==location::left_back || p==location::right_back; }
 	inline bool ordinary_slot(location p) noexcept
-	{ return p==location::left_waist || p==location::right_waist || p==location::back; }
+	{ return p==location::left_waist || p==location::right_waist || back_slot(p); }
 	struct rules
 	{
 		bool waist{};
@@ -86,15 +88,25 @@ namespace vr::gameplay::weapons::carry
 		}
 		const instance* in_slot(location p) const noexcept
 		{ if (ordinary_slot(p)) for (const auto& v:values_) if (v.at==p) return &v; return nullptr; }
-		const instance* next_back() const noexcept
+		const instance* next_overflow() const noexcept
 		{
-			if (const auto* normal=in_slot(location::back)) return normal;
 			const instance* first{};
 			for (const auto& v:values_) if (v.at==location::overflow && (!first || v.overflow_order<first->overflow_order)) first=&v;
 			return first;
 		}
+		const instance* next_back(location slot) const noexcept
+		{
+			if (back_slot(slot)) if (const auto* normal=in_slot(slot)) return normal;
+			return next_overflow();
+		}
+		const instance* next_back() const noexcept
+		{
+			if (const auto* right=in_slot(location::right_back)) return right;
+			if (const auto* left=in_slot(location::left_back)) return left;
+			return next_overflow();
+		}
 		static bool accepts(const instance& v,location p) noexcept
-		{ return !v.policy.abdominal && (p==location::back || ((p==location::left_waist || p==location::right_waist) && v.policy.waist)); }
+		{ return !v.policy.abdominal && (back_slot(p) || ((p==location::left_waist || p==location::right_waist) && v.policy.waist)); }
 		// Definition-only native adapter. Explicit instances enter through
 		// reconcile_instances; neither route moves surviving held/holstered guns.
 		bool reconcile(std::span<const owned_weapon> observed) noexcept
@@ -186,7 +198,7 @@ namespace vr::gameplay::weapons::carry
 		result draw(location p,hand h) noexcept
 		{
 			if (!valid_hand(h) || in_hand(h) || !ordinary_slot(p)) return {outcome::rejected};
-			const auto* found=p==location::back ? next_back() : in_slot(p);
+			const auto* found=back_slot(p) ? next_back(p) : in_slot(p);
 			if (!found) return {};
 			auto* v=mutable_find(found->id); v->at=location::held; assign(*v,h,hand::none);
 			return {outcome::drawn,v->id};
@@ -218,7 +230,6 @@ namespace vr::gameplay::weapons::carry
 				{reject();return {outcome::retained,id};}
 				if(target!=location::absent && !allow_storage)
 				{reject();return {outcome::retained,id};}
-			if (!clear) return reject();
 			if (target!=location::absent)
 			{
 				if (!ordinary_slot(target) || !accepts(*v,target)) return reject();
@@ -231,7 +242,7 @@ namespace vr::gameplay::weapons::carry
 				v->at=target; assign(*v,hand::none,hand::none);
 				return {exchanged ? outcome::exchanged : outcome::stowed,id,exchanged};
 			}
-			if (!drop(*v)) return reject();
+			if (!clear || !drop(*v)) return reject();
 			*v={}; return {outcome::dropped,id};
 		}
 		bool invariant() const noexcept
@@ -259,9 +270,9 @@ namespace vr::gameplay::weapons::carry
 		instance* mutable_find(identity id) noexcept
 		{ for (auto& v:values_) if (v.id==id && v.at!=location::absent) return &v; return nullptr; }
 		location free_slot(const instance& v) const noexcept
-		// Default loadout placement prefers the right hip; explicit stows keep
-		// the player's chosen slot and reconciliation never moves surviving guns.
-		{ if(v.policy.abdominal)return location::abdominal;for (auto p:{location::right_waist,location::left_waist,location::back}) if (accepts(v,p) && !in_slot(p)) return p; return location::overflow; }
+		// Default loadout placement prefers the right hip and right shoulder;
+		// explicit stows keep the player's chosen slot.
+		{ if(v.policy.abdominal)return location::abdominal;for (auto p:{location::right_waist,location::left_waist,location::right_back,location::left_back}) if (accepts(v,p) && !in_slot(p)) return p; return location::overflow; }
 		void assign(instance& v,hand rear,hand support) noexcept
 		{
 			if(v.policy.right_control)

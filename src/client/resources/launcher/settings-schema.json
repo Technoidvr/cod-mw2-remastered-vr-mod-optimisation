@@ -792,6 +792,15 @@
     "description": "settings.smartAmmoSelectionHint"
   },
   {
+    "name": "vr_holsterBackWidth",
+    "category": "gameplay",
+    "group": "settings.weaponInteraction",
+    "label": "settings.shoulderHolsterWidth",
+    "type": "number",
+    "unit": "unit.meters",
+    "description": "settings.shoulderHolsterWidthHint"
+  },
+  {
     "name": "vr_cheatHealth",
     "category": "cheats",
     "group": "settings.playerAttributes",

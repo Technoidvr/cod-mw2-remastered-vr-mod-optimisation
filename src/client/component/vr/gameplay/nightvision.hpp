@@ -112,9 +112,10 @@ namespace vr::gameplay::equipment::nightvision
 	inline bool acquisition(bool on,vec p)noexcept
 	{
 		// The stowed goggles span forehead/top of the head, not only the air
-		// in front of the eyes. Coordinates refer to the physical grip point.
-		return envelope(p) && p[0]>=(on?0.f:-.10f) && p[0]<=.35f && std::abs(p[1])<=.28f &&
-			(on ? p[2]>=-.12f && p[2]<=.10f : p[2]>=.04f && p[2]<=.30f);
+		// in front of the eyes. Tightened forward/lateral extents avoid
+		// hijacking ADS foregrips or over-the-shoulder holsters.
+		return envelope(p) && p[0]>=(on?0.f:-.08f) && p[0]<=.26f && std::abs(p[1])<=.22f &&
+			(on ? p[2]>=-.10f && p[2]<=.10f : p[2]>=.05f && p[2]<=.30f);
 	}
 	inline bool command_hand_free(std::span<const hand_interaction::session> sessions,hand actor,std::uint64_t reference)noexcept
 	{

@@ -38,12 +38,12 @@ namespace weapon_hud_lifetime_tests
 		check(empty() && !panel.accepts(first),"same-token pickup cannot resurrect a previous hold's presentation");
 		panel.value={42,58};
 		const auto before_stow=owner();
-		bag.release(bag.find_definition(7)->id,2,location::back,true,drop);
+		bag.release(bag.find_definition(7)->id,2,location::right_back,true,drop);
 		check(bag.find_definition(7) && panel.synchronize(owner()) && empty() && !panel.accepts(before_stow),
 			"holstered native-owned weapon has no held HUD");
-		bag.draw(location::back,hand::right);panel.synchronize(owner());panel.value={12,19};
+		bag.draw(location::right_back,hand::right);panel.synchronize(owner());panel.value={12,19};
 		const auto before_redraw=owner();
-		bag.release(bag.find_definition(7)->id,2,location::back,true,drop);bag.draw(location::back,hand::right);
+		bag.release(bag.find_definition(7)->id,2,location::right_back,true,drop);bag.draw(location::right_back,hand::right);
 		check(panel.synchronize(owner()) && empty() && !panel.accepts(before_redraw),
 			"stow/redraw between render samples invalidates even when the empty state was never sampled");
 		panel.value={21,33};const auto outgoing=owner();

@@ -29,7 +29,7 @@ namespace vr::body_pose
 	{
 		using clock=std::chrono::steady_clock;
 		bool valid_{};std::uint64_t reference_{};clock::time_point at_{};
-		vec position_{},eye_reference_{},last_head_{};float yaw_{};
+		vec position_{},last_head_{};float yaw_{};
 		static float wrap(float x) noexcept {return std::remainder(x,360.f);}
 	public:
 		void reset() noexcept {*this={};}
@@ -46,11 +46,16 @@ namespace vr::body_pose
 			const vec eye{orientation[0][0]*.08f,orientation[0][1]*.08f,orientation[0][2]*.08f};
 			float jump{};for(unsigned i=0;i<3;++i)jump+=(head[i]-last_head_[i])*(head[i]-last_head_[i]);
 			if(!valid_ || reference_!=reference || at<at_ || at-at_>std::chrono::milliseconds(150) || jump>.75f*.75f)
-			{position_=head;eye_reference_=eye;yaw_=wrap(head_yaw);reference_=reference;valid_=true;at_=at;}
+			{position_=head;yaw_=wrap(head_yaw);reference_=reference;valid_=true;at_=at;}
 			else if(at>at_)
 			{
 				const float dt=std::chrono::duration<float>(at-at_).count();
-				vec neck{};for(unsigned i=0;i<3;++i)neck[i]=head[i]-eye[i]+eye_reference_[i];
+				// Anchor horizontal neck compensation in the current torso frame so
+				// full roomscale turns never accumulate error, and clamp downward pitch
+				// so looking at chest gear never lifts torso slots.
+				const float torso_rad=yaw_*.01745329252f;
+				const vec torso_eye{std::cos(torso_rad)*.08f,std::sin(torso_rad)*.08f,0.f};
+				const vec neck{head[0]-eye[0]+torso_eye[0],head[1]-eye[1]+torso_eye[1],head[2]-std::max(eye[2],0.f)};
 				const float delta_x=neck[0]-position_[0],delta_y=neck[1]-position_[1],distance=std::hypot(delta_x,delta_y);
 				const float blend=1-std::exp(-dt/.12f);
 				if(distance>.07f)

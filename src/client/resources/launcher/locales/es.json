@@ -371,5 +371,7 @@
   "settings.sharpening": "Nitidez FidelityFX CAS",
   "settings.sharpeningHint": "Aplica el enfoque espacial AMD FidelityFX CAS para recuperar detalle (0 % al 100 %, por defecto: 0 %). Se aplica al instante.",
   "settings.hiddenAreaMesh": "Malla de área oculta OpenXR",
-  "settings.hiddenAreaMeshHint": "Enmascara en profundidad las esquinas invisibles de las lentes OpenXR para omitir los píxeles de los bordes durante el renderizado. Mejora el rendimiento de la GPU; activado por defecto."
+  "settings.hiddenAreaMeshHint": "Enmascara en profundidad las esquinas invisibles de las lentes OpenXR para omitir los píxeles de los bordes durante el renderizado. Mejora el rendimiento de la GPU; activado por defecto.",
+  "settings.shoulderHolsterWidth": "Separación de fundas de hombro",
+  "settings.shoulderHolsterWidthHint": "Distancia horizontal desde el centro hasta cada funda de hombro izquierda/derecha (0,10 a 0,40 m, por defecto: 0,20 m). Permite guardar un arma a dos manos en cada hombro."
 }

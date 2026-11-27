@@ -644,6 +644,7 @@ namespace vr::gameplay::weapons::underbarrel
 				ammo=sync.next;
 			}
 			s=sample_contact(s,input.input,live->owner,live->gun,input.wrists[s.contact_hand],input.body.head_position,input.body.head_yaw_axis,input.body.units_per_meter,view.travel);
+			s.waist_distance = std::min(s.waist_distance, input.waist(actor, s.supply, s.waist_radius));
 			if(grip.press && grip.down)
 			{
 				const auto picked=choose_grip(ammo,view.travel,s.firing_distance,s.action_distance,{s.support_facing,s.facing},s.support_radius);
@@ -849,6 +850,12 @@ namespace vr::gameplay::weapons::underbarrel
 			                   body.head_yaw_axis,
 			                   body.units_per_meter,
 			                   travel);
+			const unsigned valid_waist_hands =
+			    ((input.grip[0].valid && input.aim[0].valid) ? 1u : 0u) |
+			    ((input.grip[1].valid && input.aim[1].valid) ? 2u : 0u);
+			const float torso_waist = hand_interaction::waist_distance(
+			    body, wrists, valid_waist_hands, static_cast<hand>(s.contact_hand), s.supply, s.waist_radius);
+			s.waist_distance = std::min(s.waist_distance, torso_waist);
 			if (uses_pump_frame(s.type, previous_grip))
 				sample_pump_motion(s, *current_scene, wrists, travel);
 			// The caller already admitted current gameplay/tracking. A paused or

@@ -4,6 +4,27 @@ All notable changes in **OptiLord** (maintained by **TechnoidVR**, based on **Ov
 
 ---
 
+## [0.6.0] — OptiLord (Dual Shoulder Holsters, Trigger Zone Fixes & Multi-Zone Hover Haptics)
+
+### Dual Shoulder Holsters (`v0.6.0`)
+- **Independent Left & Right Shoulder Weapon Stowing (`weapon_carry.hpp`, `weapon_holsters.hpp`, `weapon_carry_grip.hpp`, `weapon_carry_runtime.cpp`)**:
+  - Replaced single `location::back` with `location::left_back` (`Y = +back_width`) and `location::right_back` (`Y = -back_width`) meeting cleanly at `Y = 0`, allowing players to stow two two-handed / heavy weapons simultaneously (left shoulder + right shoulder).
+  - Expanded `holsters` arrays (`centers`, `radii`, `volumes`) from 3 to 4 slots, updated `draw_contact()` 4-bit masks (`1, 2, 4, 8`) and `hit(eligible=0xFu)`, added `back_slot()`, `next_overflow()`, `next_back(location)`, and updated `free_slot()` fallback priority (`right_waist -> left_waist -> right_back -> left_back -> overflow`).
+  - Added `vr_holsterBackWidth` (`0.10–0.40 m`, default `0.20 m`, step `0.01 m`) in `settings.hpp`, `slot_settings`, `vehicles/runtime.cpp`, `settings-schema.json`, and all 9 launcher locales (`settings.weaponInteraction`, `92` settings total).
+  - Updated `weapon_inventory_snapshot.hpp` (`schema = 2`, `slots[4]`), `interaction_debug.{hpp,cpp}` (`LEFT/RIGHT SHOULDER`), and `weapon_carry_probe.cpp` (`left_back` / `right_back`).
+
+### VR Trigger Zone Fixes, Arbitration & Hysteresis (`v0.6.0`)
+- **180° Room-Scale & Downward-Pitch Body Tracking (`body_pose.hpp`)**: Replaced frozen `eye_reference_` with torso-yaw-rotated `torso_eye` and `std::max(eye[2], 0.f)` downward-pitch clamping so waist, shoulder, chest, and abdomen holsters remain aligned when turning around physically or looking down.
+- **Unblocked Body Holstering Near Walls (`weapon_carry.hpp`, `weapon_carry_runtime.cpp`)**: Moved the `if (!clear)` check after `if (target != location::absent)` in `inventory::release()` and skipped `check_release` wall collision traces when stowing a weapon into a body holster.
+- **Waist Distance Bonus & Underbarrel Sync (`hand_interaction/frame.hpp`, `underbarrel_runtime.cpp`, `weapon_carry_runtime.cpp`)**: Exported `hand_interaction::waist_distance()` with the `+0.04 m` front-belly/torso bonus applied uniformly, synchronized underbarrel weapon interactions with waist distance, added automatic unlock when entering the waist zone while `vr_supportGripLock` is enabled, and unified `resolve_holster_draw()` / `resolve_holster_hit()`.
+- **Priority Arbitration & Tighter Trigger Volumes (`weapon_carry_runtime.cpp`, `nightvision.hpp`, `nightvision_runtime.cpp`, `body_equipment.hpp`, `special_equipment_policy.hpp`)**: Assigned Priority `16` to foregrip/weapon-control grips and raised NVG Grip priority from `11` to `18` (above Priority `20` chest/abdomen zones), tightened NVG `acquisition()` forward/lateral bounds, reduced chest `z` half-extents (`knife .17f`, `grenade .14f`), and added a `[0..0.25]` interior gradient to `abdominal_grab_distance_at()` (with `abdomen()` at `-0.24 m`).
+- **Hysteresis & Multi-Zone Hover Readiness Haptics (`quick_reload_runtime.cpp`, `world_interaction.cpp`, `holster_feedback.hpp`, `weapon_feedback.{hpp,cpp}`, `equipment_runtime.{hpp,cpp}`, `grenade_runtime.{hpp,cpp}`, `special_equipment_runtime.{hpp,cpp}`, `weapon_carry_runtime.cpp`)**:
+  - Added `+4 cm` active dwell exit hysteresis and begin/complete haptic cues to Quick Reload, plus `+0.35 m` / `+8°` active retention hysteresis to world `use_lease` interactions.
+  - Added read-only readiness queries (`chest_knife_ready()`, `chest_slot_ready(unsigned)`, `abdomen_ready()`), `back_slot_candidate()` (`0xCu` dual-shoulder mask), `hover_zone` readiness pulses (`left_waist`, `right_waist`, `left_back`, `right_back`, `chest_knife`, `chest_tactical`, `chest_lethal`, `abdomen`, `ammo_pouch`), and per-zone `zone_hover_feedback` latching with `+4 cm` exit margins in `finish_interactions()`.
+
+### Documentation & Versioning (`v0.6.0`)
+- Bumped `version.json` to `"0.6.0"` (`file_version: [0, 6, 0, 0]`, `prerelease: true`) and updated `CHANGELOG.md`, `OPTIMIZATIONS.md`, `OPTIMIZATIONS_FR.md`, and `README.md`.
+
 ## [0.5.0] — OptiLord (Clean 1-Click Installer & Uninstaller)
 
 ### Clean Self-Extracting Installer & Uninstaller (`v0.5.0`)

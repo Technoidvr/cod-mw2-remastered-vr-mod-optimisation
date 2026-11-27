@@ -47,10 +47,10 @@ namespace weapon_identity_tests
 		const auto reject=[](const instance&){return false;};
 		check(bag.release(a,1,location::absent,true,reject).action==outcome::rejected &&
 			bag.in_hand(hand::left)->id==a && bag.in_hand(hand::right)->id==b,"failed identical-gun drop retains only its own transaction");
-		check(bag.release(a,1,location::back,true,reject).action==outcome::stowed &&
+		check(bag.release(a,1,location::right_back,true,reject).action==outcome::stowed &&
 			bag.find(b)->owner.revision==owner_b.revision,"stowing a copy does not revise the other trigger lease");
-		check(bag.release(b,2,location::back,true,reject).action==outcome::exchanged &&
-			bag.in_hand(hand::right)->id==a && bag.in_slot(location::back)->id==b,"same-definition holster exchange preserves both identities");
+		check(bag.release(b,2,location::right_back,true,reject).action==outcome::exchanged &&
+			bag.in_hand(hand::right)->id==a && bag.in_slot(location::right_back)->id==b,"same-definition holster exchange preserves both identities");
 		check(bag.support(a,hand::left) && bag.release(a,2,location::absent,false,reject).action==outcome::promoted &&
 			bag.in_hand(hand::left)->id==a,"handover targets the exact same-definition instance");
 		identity dropped{};
@@ -82,9 +82,9 @@ namespace weapon_identity_tests
 		for (unsigned i=0;i<4000;++i)
 		{
 			random=random*1664525u+1013904223u;const auto h=static_cast<hand>((random>>5)&1);
-			constexpr location slots[]{location::left_waist,location::right_waist,location::back,location::absent};
-			if (const auto* gun=bag.in_hand(h)) bag.release(gun->id,1u<<unsigned(h),slots[random%4],bool(random&7),reject);
-			else bag.draw(slots[random%4],h);
+			constexpr location slots[]{location::left_waist,location::right_waist,location::left_back,location::right_back,location::absent};
+			if (const auto* gun=bag.in_hand(h)) bag.release(gun->id,1u<<unsigned(h),slots[random%5],bool(random&7),reject);
+			else bag.draw(slots[random%5],h);
 			check(bag.invariant(),"adversarial identical-gun actions preserve hand and slot uniqueness");
 		}
 		instance_cache<int,2> cache;

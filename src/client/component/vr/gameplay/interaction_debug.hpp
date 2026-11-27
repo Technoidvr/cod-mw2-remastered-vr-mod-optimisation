@@ -22,7 +22,7 @@ namespace vr::gameplay::interaction::debug
 	};
 	struct body_sample
 	{
-		weapons::carry::holsters slots{};std::array<vec,2> hands{};std::array<std::uint32_t,3> weapons{};
+		weapons::carry::holsters slots{};std::array<vec,2> hands{};std::array<std::uint32_t,4> weapons{};
 		float units{};std::uint64_t reference{};clock::time_point at{};
 	};
 	struct supply_sample

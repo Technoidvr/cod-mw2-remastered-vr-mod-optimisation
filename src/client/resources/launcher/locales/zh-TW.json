@@ -371,5 +371,7 @@
   "settings.sharpening": "FidelityFX CAS 銳化",
   "settings.sharpeningHint": "套用 AMD FidelityFX CAS 空間銳化以還原畫面細節（0% 至 100%，預設 0%）。立即生效。",
   "settings.hiddenAreaMesh": "OpenXR 隱藏區域遮罩",
-  "settings.hiddenAreaMeshHint": "在深度緩衝中預先遮罩 OpenXR 鏡片邊緣不可見的角落，略過不可見邊緣像素的著色渲染以提升 GPU 效能。預設開啟。"
+  "settings.hiddenAreaMeshHint": "在深度緩衝中預先遮罩 OpenXR 鏡片邊緣不可見的角落，略過不可見邊緣像素的著色渲染以提升 GPU 效能。預設開啟。",
+  "settings.shoulderHolsterWidth": "肩部槍套間距",
+  "settings.shoulderHolsterWidthHint": "從身體中心到左右肩部槍套的水平距離（0.10 至 0.40 公尺，預設：0.20 公尺）。可在左右兩肩各收納一把雙手武器。"
 }

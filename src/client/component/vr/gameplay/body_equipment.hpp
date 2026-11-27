@@ -48,7 +48,7 @@ namespace vr::gameplay::equipment
 			// Tall body-aligned boxes share a symmetric width and a gap between
 			// slots. The knife alone has more depth/height and a raised handle area.
 			const bool knife=i==unsigned(slot::knife);
-			const vec half=scale(vec{knife?.12f:.10f,std::min(.08f,layout.spacing*.45f),knife?.20f:.16f},body.units_per_meter);
+			const vec half=scale(vec{knife?.12f:.10f,std::min(.08f,layout.spacing*.45f),knife?.17f:.14f},body.units_per_meter);
 			const auto origin=add(out.anchors[i].position,scale(body.head_yaw_axis[2],knife?.04f*body.units_per_meter:0.f));
 			out.grabs[i]={origin,scale(half,-1),half,body.head_yaw_axis,0};
 		}

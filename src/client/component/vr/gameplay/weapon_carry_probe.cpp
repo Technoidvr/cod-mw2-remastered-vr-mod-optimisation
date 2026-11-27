@@ -92,8 +92,12 @@ namespace vr::gameplay::weapons::carry_probe
 							if (ok) dropped={entity,selected,gun.position};
 						}
 						if (action=="pickup") {carry::identity id;*out << "pickup=" << native_carry::pickup(dropped,id) << " recovered=" << id.weapon << ':' << id.generation << " native=" << native_carry::status() << '\n';}
-						if (action=="stow") *out << "stow=" << carry::debug_release(name=="left" ? carry::location::left_waist : name=="right" ? carry::location::right_waist : carry::location::back,false) << '\n';
-						if (action=="draw") *out << "draw=" << carry::debug_draw(name=="left" ? carry::location::left_waist : name=="right" ? carry::location::right_waist : carry::location::back,left ? hand::left : hand::right) << '\n';
+						const auto target_slot = name == "left" ? carry::location::left_waist
+							: name == "right" ? carry::location::right_waist
+							: name == "left_back" ? carry::location::left_back
+							: carry::location::right_back;
+						if (action=="stow") *out << "stow=" << carry::debug_release(target_slot,false) << '\n';
+						if (action=="draw") *out << "draw=" << carry::debug_draw(target_slot,left ? hand::left : hand::right) << '\n';
 					}
 					catch(const std::exception& e) {*out << "error=" << e.what() << '\n';}
 					capture(*out,"after");

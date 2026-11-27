@@ -213,7 +213,7 @@ namespace vr::gameplay::equipment::nightvision
 				const auto edge=hi::input(actor,source);if(!edge.press || !edge.down || edge.release)continue;
 				// Empty hands only; the common arbiter also prevents simultaneous
 				// knife, magazine, grenade, world or firearm acquisitions.
-				hi::offer({actor,grasp(source,f.input.reference_generation),edge.event,source==button::trigger?10u:11u,
+				hi::offer({actor,grasp(source,f.input.reference_generation),edge.event,source==button::trigger?10u:18u,
 					std::abs((*point)[1]),1,true,true});
 			}
 		}

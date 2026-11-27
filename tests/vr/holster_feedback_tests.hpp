@@ -16,24 +16,25 @@ namespace holster_feedback_tests
 		for (auto actor : {hand::left, hand::right})
 		{
 			inventory owned;
-			const owned_weapon items[]{{101, {}}, {102, {}}};
+			const owned_weapon items[]{{101, {}}, {102, {}}, {103, {}}};
 			owned.reconcile(items);
-			const auto first = owned.next_back()->id;
+			const auto first = owned.next_back(location::left_back)->id;
 			check(back_slot_candidate(owned, actor, slots, point, true).subject == first,
-			      "empty hand receives a back draw cue for the actual next instance");
-			owned.draw(location::back, actor);
-			check(back_slot_candidate(owned, actor, slots, point, true).action == outcome::stowed,
-			      "overflow draw leaves an empty ordinary back slot eligible for storage");
+			      "empty hand receives a back draw cue for the hovered shoulder instance");
+			owned.draw(location::left_back, actor);
+			const auto third = owned.next_back(location::left_back)->id;
+			check(third.weapon == 103 && back_slot_candidate(owned, actor, slots, point, true).action == outcome::stowed,
+			      "drawing left shoulder lets empty shoulder store while keeping overflow extractable");
 			check(back_slot_candidate(owned, actor, slots, point, false).action == outcome::unchanged &&
 			      back_slot_candidate(owned, actor, slots, body.head_position, true).action == outcome::unchanged,
 			      "storage restriction and hand outside the slot suppress readiness");
 			const auto other = hand(1 - unsigned(actor));
-			owned.draw(location::back, other);
+			owned.draw(location::left_back, other);
 			const auto second = owned.in_hand(other)->id;
-			owned.release(second, 1u << unsigned(other), location::back, true, [](const auto&) { return false; });
+			owned.release(second, 1u << unsigned(other), location::left_back, true, [](const auto&) { return false; });
 			const auto exchange = back_slot_candidate(owned, actor, slots, point, true);
 			check(exchange.action == outcome::exchanged && exchange.received == second &&
-			      owned.in_hand(actor)->id == first && owned.in_slot(location::back)->id == second,
+			      owned.in_hand(actor)->id == first && owned.in_slot(location::left_back)->id == second,
 			      "exchange preview keeps both original owners unchanged");
 			owned.support(first, other);
 			check(back_slot_candidate(owned, actor, slots, point, true).action == outcome::unchanged &&
@@ -73,5 +74,18 @@ namespace holster_feedback_tests
 		check(cue.update(input, 3, 0, ready) == 3, "recenter invalidates previous spatial contact latches");
 		++input.continuity_generation;
 		check(cue.update(input, 3, 0, ready) == 3, "new tracking continuity cannot retain old contact latches");
+
+		zone_hover_feedback zones;
+		std::array<std::uint8_t, 2> current_zone{3, 0};
+		const auto zone_pulse = zones.update(input, 3, 0, [&](hand a, std::uint8_t) { return current_zone[unsigned(a)]; },
+		                                     [](hand, std::uint8_t) { return true; });
+		check(zone_pulse[0] == 3 && zone_pulse[1] == 0, "zone hover emits initial shoulder pulse");
+		const auto hold_same = zones.update(input, 3, 0, [&](hand a, std::uint8_t) { return current_zone[unsigned(a)]; },
+		                                    [](hand, std::uint8_t) { return true; });
+		check(hold_same[0] == 0, "staying in the same shoulder zone never double-pulses");
+		current_zone[0] = 4;
+		const auto slide_other = zones.update(input, 3, 0, [&](hand a, std::uint8_t) { return current_zone[unsigned(a)]; },
+		                                      [](hand, std::uint8_t) { return true; });
+		check(slide_other[0] == 4, "sliding directly from left shoulder to right shoulder emits a new pulse");
 	}
 }

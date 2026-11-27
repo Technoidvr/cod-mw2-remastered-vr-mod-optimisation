@@ -37,12 +37,12 @@ namespace vr::gameplay::weapons::feedback
 		game::dvar_t *sound_enabled{}, *haptic_gain{};
 		std::atomic<float> published_haptic_gain{};
 		bool sound_ready{};
-		void carry_pulse(hand actor, const controller_input::frame& input, float seconds, float amplitude) noexcept
+		void carry_pulse(hand actor, const controller_input::frame& input, float seconds, float amplitude, float frequency = 110.f) noexcept
 		{
 			const auto gain = published_haptic_gain.load();
 			if (!alive || !valid_hand(actor) || gain <= 0 || !input.focused) return;
 			controller_haptics::request(static_cast<int>(actor),
-			    {seconds, 110.f, amplitude * gain, input.reference_generation, input.sampled_at});
+			    {seconds, frequency, amplitude * gain, input.reference_generation, input.sampled_at});
 			++pulses;
 		}
 		void tick()
@@ -174,6 +174,32 @@ namespace vr::gameplay::weapons::feedback
 	void carry_readiness(hand actor,const controller_input::frame& input) noexcept
 	{
 		carry_pulse(actor, input, .012f, .08f);
+	}
+	void zone_readiness(hand actor,hover_zone zone,const controller_input::frame& input) noexcept
+	{
+		switch (zone)
+		{
+		case hover_zone::left_waist:
+		case hover_zone::right_waist:
+			carry_pulse(actor, input, .010f, .07f, 85.f);
+			break;
+		case hover_zone::left_back:
+		case hover_zone::right_back:
+			carry_pulse(actor, input, .012f, .09f, 115.f);
+			break;
+		case hover_zone::chest_knife:
+		case hover_zone::chest_tactical:
+		case hover_zone::chest_lethal:
+		case hover_zone::abdomen:
+			carry_pulse(actor, input, .011f, .08f, 155.f);
+			break;
+		case hover_zone::ammo_pouch:
+			carry_pulse(actor, input, .008f, .06f, 195.f);
+			break;
+		case hover_zone::none:
+		default:
+			break;
+		}
 	}
 	void melee_confirmation(const hold& owner,const controller_input::frame& input,const std::array<float,3>& position) noexcept
 	{

@@ -158,18 +158,20 @@ namespace vr::gameplay::vehicles
 		w::carry::holster_layout layout()
 		{
 			w::carry::holster_layout result;
-			const std::array<const char*, 6> names{"vr_holsterWaistWidth",
+			const std::array<const char*, 7> names{"vr_holsterWaistWidth",
 			                                       "vr_holsterWaistDown",
 			                                       "vr_holsterBackDistance",
 			                                       "vr_holsterBackDown",
 			                                       "vr_holsterWaistRadius",
-			                                       "vr_holsterBackRadius"};
-			std::array<float*, 6> values{&result.waist_width,
+			                                       "vr_holsterBackRadius",
+			                                       "vr_holsterBackWidth"};
+			std::array<float*, 7> values{&result.waist_width,
 			                             &result.waist_down,
 			                             &result.back_distance,
 			                             &result.back_down,
 			                             &result.waist_radius,
-			                             &result.back_radius};
+			                             &result.back_radius,
+			                             &result.back_width};
 			for (unsigned i = 0; i < names.size(); ++i)
 				if (const auto* value = game::Dvar_FindVar(names[i]))
 					*values[i] = value->current.value;

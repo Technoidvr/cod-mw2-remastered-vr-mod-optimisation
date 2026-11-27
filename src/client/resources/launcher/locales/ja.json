@@ -371,5 +371,7 @@
   "settings.sharpening": "FidelityFX CAS シャープ化",
   "settings.sharpeningHint": "AMD FidelityFX CAS による空間シャープ化を適用し、細部の鮮明さを補います（0%～100%、初期値：0%）。すぐに反映されます。",
   "settings.hiddenAreaMesh": "OpenXR 非表示領域メッシュ",
-  "settings.hiddenAreaMeshHint": "OpenXR レンズの視界外となる四隅を深度バッファで事前にマスクし、見えない端のピクセル描画を省略します。GPU 負荷を軽減します。初期状態は有効です。"
+  "settings.hiddenAreaMeshHint": "OpenXR レンズの視界外となる四隅を深度バッファで事前にマスクし、見えない端のピクセル描画を省略します。GPU 負荷を軽減します。初期状態は有効です。",
+  "settings.shoulderHolsterWidth": "ショルダーホルスター間隔",
+  "settings.shoulderHolsterWidthHint": "体の中心から左右それぞれの肩ホルスターまでの水平距離（0.10〜0.40 m、初期値: 0.20 m）。両肩に両手武器を1丁ずつ収納できます。"
 }

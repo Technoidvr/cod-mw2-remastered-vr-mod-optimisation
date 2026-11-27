@@ -371,5 +371,7 @@
   "settings.sharpening": "FidelityFX-CAS-Schärfe",
   "settings.sharpeningHint": "Wendet räumliches AMD FidelityFX CAS zur Detailwiederherstellung an (0 % bis 100 %, Standard: 0 %). Gilt sofort.",
   "settings.hiddenAreaMesh": "OpenXR-Sichtfeldmaske",
-  "settings.hiddenAreaMeshHint": "Maskiert unsichtbare OpenXR-Linsenecken im Tiefenpuffer vorab aus, um nicht sichtbare Randpixel beim Rendern zu überspringen. Steigert die GPU-Leistung; standardmäßig aktiviert."
+  "settings.hiddenAreaMeshHint": "Maskiert unsichtbare OpenXR-Linsenecken im Tiefenpuffer vorab aus, um nicht sichtbare Randpixel beim Rendern zu überspringen. Steigert die GPU-Leistung; standardmäßig aktiviert.",
+  "settings.shoulderHolsterWidth": "Schulterholster-Abstand",
+  "settings.shoulderHolsterWidthHint": "Horizontaler Abstand von der Mitte zu jedem linken/rechten Schulterholster (0,10 bis 0,40 m, Standard: 0,20 m). Ermöglicht das Verstauen je einer Zweihandwaffe pro Schulter."
 }

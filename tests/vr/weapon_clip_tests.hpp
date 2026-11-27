@@ -101,8 +101,8 @@ namespace weapon_clip_tests
 		const carry::owned_instance pair[]{{left,{true,true}},{right,{true,true}}};
 		check(bag.reconcile_instances(pair) && bag.equip(left,hand::left) && bag.equip(right,hand::right),"two clips enter both physical hands");
 		const auto left_clip=full.find(left)->loaded,right_clip=full.find(right)->loaded;
-		bag.release(left,1,carry::location::back,true,[](const auto&){return false;});
-		bag.release(right,2,carry::location::back,true,[](const auto&){return false;});
+		bag.release(left,1,carry::location::right_back,true,[](const auto&){return false;});
+		bag.release(right,2,carry::location::right_back,true,[](const auto&){return false;});
 		check(bag.in_hand(hand::right)->id==left && full.find(left)->loaded==left_clip && full.find(right)->loaded==right_clip,
 			"same-model holster exchange never exchanges clip contents");
 	}

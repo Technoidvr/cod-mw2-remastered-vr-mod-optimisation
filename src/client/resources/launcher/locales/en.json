@@ -371,5 +371,7 @@
   "settings.sharpening": "FidelityFX CAS sharpening",
   "settings.sharpeningHint": "Applies AMD FidelityFX CAS spatial sharpening to recover detail (0% to 100%, default: 0%). Applies immediately.",
   "settings.hiddenAreaMesh": "OpenXR hidden area mesh",
-  "settings.hiddenAreaMeshHint": "Masks invisible OpenXR lens corners in depth so edge pixels are skipped during rendering. Improves GPU performance; on by default."
+  "settings.hiddenAreaMeshHint": "Masks invisible OpenXR lens corners in depth so edge pixels are skipped during rendering. Improves GPU performance; on by default.",
+  "settings.shoulderHolsterWidth": "Shoulder holster spacing",
+  "settings.shoulderHolsterWidthHint": "Horizontal distance from center to each left/right shoulder holster (0.10 to 0.40 m, default: 0.20 m). Allows stowing one two-handed weapon on each shoulder."
 }

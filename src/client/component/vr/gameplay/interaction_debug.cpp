@@ -171,7 +171,7 @@ namespace vr::gameplay::interaction::debug
 			batch out;
 			if (!s.slots.valid)
 				return out;
-			for (unsigned n = 0; n < 3; ++n)
+			for (unsigned n = 0; n < s.slots.volumes.size(); ++n)
 			{
 				bool contact = false;
 				for (const auto p : s.hands)
@@ -326,7 +326,7 @@ namespace vr::gameplay::interaction::debug
 			}
 			out << "slots_age_ms=" << age(b.at) << " supply_age_ms=" << age(s.at)
 			    << " supply_weapon=" << s.owner.weapon << " supply_hand=" << s.hand << '\n';
-			for (unsigned n = 0; n < 3; ++n)
+			for (unsigned n = 0; n < b.weapons.size(); ++n)
 				out << "slot=" << n << " weapon=" << b.weapons[n] << " center=" << b.slots.centers[n][0]
 				    << ',' << b.slots.centers[n][1] << ',' << b.slots.centers[n][2]
 				    << " radius=" << b.slots.radii[n] << '\n';
@@ -405,8 +405,8 @@ namespace vr::gameplay::interaction::debug
 						}
 			if (body_on && fresh(b.at, b.reference, frame) && b.slots.valid)
 			{
-				constexpr std::array names{"LEFT WAIST", "RIGHT WAIST", "BACK"};
-				for (unsigned n = 0; n < 3; ++n)
+				constexpr std::array names{"LEFT WAIST", "RIGHT WAIST", "LEFT SHOULDER", "RIGHT SHOULDER"};
+				for (unsigned n = 0; n < names.size(); ++n)
 				{
 					char text[96];
 					snprintf(text, sizeof(text), "%s [%u]", names[n], b.weapons[n]);

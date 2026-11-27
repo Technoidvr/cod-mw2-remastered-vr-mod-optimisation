@@ -371,5 +371,7 @@
   "settings.sharpening": "FidelityFX CAS 선명화",
   "settings.sharpeningHint": "AMD FidelityFX CAS 공간 선명화를 적용해 디테일을 보정합니다(0%~100%, 기본값: 0%). 즉시 적용됩니다.",
   "settings.hiddenAreaMesh": "OpenXR 숨김 영역 메시",
-  "settings.hiddenAreaMeshHint": "보이지 않는 OpenXR 렌즈 모서리를 깊이 버퍼에서 미리 마스킹하여 가장자리 픽셀 렌더링을 건너뜁니다. GPU 성능이 향상되며 기본적으로 켜져 있습니다."
+  "settings.hiddenAreaMeshHint": "보이지 않는 OpenXR 렌즈 모서리를 깊이 버퍼에서 미리 마스킹하여 가장자리 픽셀 렌더링을 건너뜁니다. GPU 성능이 향상되며 기본적으로 켜져 있습니다.",
+  "settings.shoulderHolsterWidth": "어깨 홀스터 간격",
+  "settings.shoulderHolsterWidthHint": "몸 중앙에서 좌우 어깨 홀스터까지의 수평 거리(0.10~0.40 m, 기본값: 0.20 m)입니다. 양쪽 어깨에 각각 양손 무기를 1정씩 보관할 수 있습니다."
 }

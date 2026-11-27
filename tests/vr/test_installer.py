@@ -13,6 +13,7 @@ import time
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
+EXPECTED_VERSION = json.loads((ROOT / "version.json").read_text(encoding="utf-8-sig"))["name"]
 
 
 def run_cmd(args: list[str]) -> subprocess.CompletedProcess[str]:
@@ -54,10 +55,10 @@ def create_dummy_setup_from_stub(stub_exe: Path, work_dir: Path) -> Path:
         encoding="utf-8",
     )
     (pkg_dir / "version.json").write_text(
-        json.dumps({"name": "0.5.0", "file_version": [0, 5, 0, 0], "prerelease": True}) + "\n",
+        json.dumps({"name": EXPECTED_VERSION, "file_version": [0, 6, 0, 0], "prerelease": True}) + "\n",
         encoding="utf-8",
     )
-    (pkg_dir / "h2-mod/scripts/init.lua").write_text("-- optilord v0.5.0 test\n", encoding="utf-8")
+    (pkg_dir / "h2-mod/scripts/init.lua").write_text(f"-- optilord v{EXPECTED_VERSION} test\n", encoding="utf-8")
     (pkg_dir / "steamvr/cover.png").write_bytes(b"\x89PNG\r\n\x1a\nTEST")
     (pkg_dir / "vr_input/actions.json").write_text("{}", encoding="utf-8")
 
@@ -147,7 +148,7 @@ def run_tests(setup_exe: Path) -> None:
         ver_file = fake_game / "version.json"
         assert ver_file.is_file(), "version.json missing after install"
         ver_data = json.loads(ver_file.read_text(encoding="utf-8-sig"))
-        assert ver_data.get("name") == "0.5.0", f"Expected version 0.5.0, got {ver_data}"
+        assert ver_data.get("name") == EXPECTED_VERSION, f"Expected version {EXPECTED_VERSION}, got {ver_data}"
 
         manifest_file = fake_game / "optilord-install-manifest.json"
         assert manifest_file.is_file(), "optilord-install-manifest.json missing after install"
@@ -182,7 +183,7 @@ def run_tests(setup_exe: Path) -> None:
         assert status.get("valid") == "1", f"Expected valid=1, got {status}"
         assert status.get("installed") == "1", f"Expected installed=1, got {status}"
         assert status.get("legacy_or_stale") == "0", f"Expected legacy_or_stale=0, got {status}"
-        assert status.get("version") == "0.5.0", f"Expected version=0.5.0, got {status}"
+        assert status.get("version") == EXPECTED_VERSION, f"Expected version={EXPECTED_VERSION}, got {status}"
         assert status.get("manifest") == "1", f"Expected manifest=1, got {status}"
         assert status.get("pdb") == "0", f"Expected pdb=0, got {status}"
         print(f"[PASS] --status post-install verified: {status}")

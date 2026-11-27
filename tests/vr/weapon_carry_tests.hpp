@@ -266,16 +266,23 @@ namespace weapon_carry_tests
 		}
 		const std::array<owned_weapon,6> items{{{1,{true,true}},{2,{true,true}},{3,{}},{4,{}},{5,{}},{6,{true,true}}}};
 		inventory bag;check(bag.reconcile(items),"carry native admission");
-		check(bag.invariant() && bag.next_back()->id.weapon==3,"normal back precedes overflow");
-		check(bag.draw(location::back,hand::right).action==outcome::drawn,"back draw");
-		check(bag.draw(location::back,hand::left).subject.weapon==4,"second hand draws overflow");
-		check(bag.next_back()->id.weapon==5,"stable overflow order");
-		check(bag.reconcile(items) && bag.in_hand(hand::left)->id.weapon==4,"reconcile never requeues extracted weapon");
+		check(bag.invariant() && bag.in_slot(location::right_back)->id.weapon==3 && bag.in_slot(location::left_back)->id.weapon==4 &&
+			bag.next_back(location::right_back)->id.weapon==3 && bag.next_back(location::left_back)->id.weapon==4 &&
+			bag.next_overflow()->id.weapon==5,"dual shoulder slots fill before overflow");
+		check(bag.draw(location::right_back,hand::right).action==outcome::drawn,"right shoulder draw");
+		check(bag.draw(location::right_back,hand::left).subject.weapon==5,"second hand draws overflow from vacated shoulder");
+		check(bag.next_overflow()->id.weapon==6,"stable overflow order");
+		check(bag.reconcile(items) && bag.in_hand(hand::left)->id.weapon==5,"reconcile never requeues extracted weapon");
 		auto id=bag.in_hand(hand::right)->id;
 		check(bag.release(id,2,location::right_waist,true,no_drop).action==outcome::rejected,"long gun rejected by occupied waist");
 		check(bag.in_hand(hand::right)->id==id && bag.in_slot(location::right_waist)->id.weapon==1,"rejected stow loses neither weapon");
-		check(bag.release(id,2,location::back,true,no_drop).action==outcome::stowed,"empty back stow");
-		check(!bag.in_hand(hand::right) && bag.in_hand(hand::left)->id.weapon==4,"stow leaves hand empty without equipping another weapon");
+		check(bag.release(id,2,location::right_back,false,no_drop).action==outcome::stowed,"holster stow succeeds even near walls without drop clearance");
+		check(!bag.in_hand(hand::right) && bag.in_hand(hand::left)->id.weapon==5,"stow leaves hand empty without equipping another weapon");
+		// Two two-handed weapons can be stowed simultaneously on left and right shoulders.
+		check(bag.draw(location::left_back,hand::right).subject.weapon==4,"left shoulder holds independent second two-handed weapon");
+		check(bag.release(bag.in_hand(hand::right)->id,2,location::left_back,true,no_drop).action==outcome::stowed &&
+			bag.in_slot(location::right_back)->id.weapon==3 && bag.in_slot(location::left_back)->id.weapon==4,
+			"two heavy weapons remain simultaneously holstered on left and right shoulders");
 		check(bag.draw(location::right_waist,hand::right).subject.weapon==1,"waist draw");
 		id=bag.in_hand(hand::right)->id;
 		check(bag.release(id,2,location::left_waist,true,no_drop).action==outcome::exchanged,"occupied compatible holster swaps atomically");
@@ -304,9 +311,9 @@ namespace weapon_carry_tests
 		check(many.reconcile(full) && many.invariant(),"fifteen native records admitted without a three-weapon cap");
 		many.draw(location::left_waist,hand::left);many.draw(location::right_waist,hand::right);
 		many.release(many.in_hand(hand::left)->id,1,location::absent,true,accept);
-		many.draw(location::back,hand::left);many.release(many.in_hand(hand::left)->id,1,location::left_waist,true,no_drop);
-		many.draw(location::back,hand::left);
-		check(many.in_hand(hand::left)->id.weapon==4,"overflow extraction follows ordinary back");
+		many.draw(location::right_back,hand::left);many.release(many.in_hand(hand::left)->id,1,location::left_waist,true,no_drop);
+		many.draw(location::right_back,hand::left);
+		check(many.in_hand(hand::left)->id.weapon==5,"overflow extraction follows empty shoulder slot");
 		check(many.release(many.in_hand(hand::left)->id,1,location::right_waist,true,no_drop).action==outcome::stowed,"extracted pistol may enter compatible ordinary empty slot");
 		// Rejected/malformed snapshots leave existing data unchanged.
 		const std::array<owned_weapon,2> duplicate{{{2,{}},{2,{}}}};
@@ -315,7 +322,7 @@ namespace weapon_carry_tests
 		for (unsigned n=0;n<4000;++n)
 		{
 			random=random*1664525u+1013904223u;const auto h=static_cast<hand>((random>>5)&1);
-			constexpr std::array slots{location::left_waist,location::right_waist,location::back,location::overflow,location::absent};
+			constexpr std::array slots{location::left_waist,location::right_waist,location::left_back,location::right_back,location::overflow,location::absent};
 			const auto target=slots[random%slots.size()];
 			if (const auto* v=many.in_hand(h)) many.release(v->id,1u<<static_cast<unsigned>(h),target,(random&7)!=0,no_drop);
 			else many.draw(target,h);
@@ -355,13 +362,13 @@ namespace weapon_carry_tests
 		body.head_yaw_axis={{{1,0,0},{0,1,0},{0,0,1}}};
 		const auto holsters=locate_holsters(body);
 		{
-			inventory stored;const owned_weapon weapons[]{{201,{}},{202,{}}};stored.reconcile(weapons);
+			inventory stored;const owned_weapon weapons[]{{201,{}},{202,{}},{203,{}}};stored.reconcile(weapons);
 			auto overlapping=holsters;overlapping.centers[0]=holsters.centers[2];overlapping.volumes[0]=holsters.volumes[2];
-			check(draw_contact(stored,overlapping,holsters.centers[2])==location::back,"empty overlapping waist cannot conceal occupied back draw priority");
-			stored.draw(location::back,hand::right);
-			check(draw_contact(stored,overlapping,holsters.centers[2])==location::back,"overflow-only back still reserves draw priority");
-			stored.draw(location::back,hand::left);
-			check(draw_contact(stored,overlapping,holsters.centers[2])==location::absent,"empty holsters do not suppress ground pickup or F");
+			check(draw_contact(stored,overlapping,holsters.centers[2])==location::left_back,"empty overlapping waist cannot conceal occupied shoulder draw priority");
+			stored.draw(location::left_back,hand::right);
+			check(draw_contact(stored,overlapping,holsters.centers[2])==location::left_back,"overflow-only shoulder still reserves draw priority");
+			stored.draw(location::left_back,hand::left);
+			check(draw_contact(stored,overlapping,holsters.centers[2])==location::absent,"empty shoulder and overflow do not suppress ground pickup or F");
 		}
 		for (const auto where:{location::left_waist,location::right_waist})
 		{
@@ -371,13 +378,13 @@ namespace weapon_carry_tests
 				"waist gun points down with inward cant and slide facing body forward");
 		}
 		check(holsters.valid && hit(holsters,holsters.centers[0])==location::left_waist &&
-			hit(holsters,holsters.centers[2])==location::back,"body slots use gravity-aligned head-yaw frame");
+			hit(holsters,holsters.centers[2])==location::left_back &&
+			hit(holsters,holsters.centers[3])==location::right_back,"body slots use gravity-aligned head-yaw frame");
 		const auto body_point=[&](vr::gameplay::hands::vec meters) {return vr::gameplay::hands::add(body.head_position,vr::gameplay::hands::scale(meters,body.units_per_meter));};
 		check(hit(holsters,body_point({-.25f,.47f,-.86f}))==location::left_waist &&
 			hit(holsters,body_point({-.25f,-.47f,-.86f}))==location::right_waist,"waist slots reach behind, outside and below both hips");
-		check(hit(holsters,body_point({-.30f,.35f,-.18f}))==location::back &&
-			hit(holsters,body_point({-.30f,-.35f,-.18f}))==location::back &&
-			hit(holsters,body_point({-.35f,0,-.56f}))==location::back,"back slot covers both shoulder approaches and lower back");
+		check(hit(holsters,body_point({-.30f,.35f,-.18f}))==location::left_back &&
+			hit(holsters,body_point({-.30f,-.35f,-.18f}))==location::right_back,"left and right shoulder slots resolve symmetrically across the upper back");
 		check(hit(holsters,body_point({.25f,.23f,-.6f}))==location::absent,"forward hand motion is outside body storage");
 		auto rotated=body;rotated.head_yaw_axis={{{0,1,0},{-1,0,0},{0,0,1}}};
 		const auto rotated_slots=locate_holsters(rotated);

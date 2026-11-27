@@ -45,6 +45,32 @@ namespace body_pose_tests
 		estimator.reset();const auto wrap_start=estimator.update({},yaw(170),170,1,start);
 		const auto wrap_end=estimator.update({},yaw(-170),-170,1,start+10ms);
 		check(length(sub(wrap_start.yaw_axis[0],wrap_end.yaw_axis[0]))<1e-5f,"crossing the yaw wrap does not invent a full torso turn");
+		// Turning 180 degrees and stepping forward in roomscale must update torso eye
+		// compensation to the 180-degree heading rather than retaining a +16 cm offset.
+		estimator.reset();
+		estimator.update({.08f,0,0},identity,0,1,start);
+		body_pose::estimate turned_180;
+		for(int i=1;i<=250;++i)
+		{
+			const float deg=std::min(215.f,i*2.5f);const auto ax=yaw(deg);
+			turned_180=estimator.update({ax[0][0]*.08f,ax[0][1]*.08f,0},ax,deg,1,start+i*10ms);
+		}
+		for(int i=251;i<=350;++i)
+		{
+			const float x=-.08f-float(i-250)*.01f;
+			turned_180=estimator.update({x,0,0},yaw(180.f),180.f,1,start+i*10ms);
+		}
+		for(int i=351;i<=450;++i)
+			turned_180=estimator.update({-1.08f,0,0},yaw(180.f),180.f,1,start+i*10ms);
+		check(length(sub(turned_180.position,vec{-1.08f,0,0}))<=.071f,
+			"180-degree roomscale turn tracks turned head instead of keeping frozen 16 cm offset");
+		// Pitching head downward to check chest gear must not lift torso zones upward.
+		estimator.reset();
+		estimator.update({},identity,0,1,start);
+		const float down_rad=-70.f*.01745329252f;
+		const body_pose::axes pitch_down{vec{std::cos(down_rad),0,std::sin(down_rad)},vec{0,1,0},vec{-std::sin(down_rad),0,std::cos(down_rad)}};
+		auto look_down=estimator.update({},pitch_down,0,1,start+50ms);
+		check(std::abs(look_down.position[2])<1e-5f,"looking downward keeps torso vertical anchor steady");
 		{
 			head_pose_bridge::spatial_frame frame;frame.units_per_meter=40;frame.head_position={120,70,90};frame.head_yaw_axis=yaw(30);
 			frame.body={true,{100,50,90},identity};

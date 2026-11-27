@@ -128,10 +128,17 @@ namespace vr::gameplay::interaction
 			head_pose_bridge::world_pose aim;
 			if (!(available&(1u<<h)) || !input.grip[h].valid || !input.aim[h].valid ||
 				!head_pose_bridge::tracking_to_world(body,input.aim[h].tracking,aim)) {available&=~(1u<<h);continue;}
-			rays[h]={aim.position,aim.axis[0],body.head_position,body.units_per_meter,reach->current.value,cone->current.value};
-			if(const auto chosen=queries.find(unsigned(h),input.sequence,input.reference_generation,rays[h]))
-				next.hover.targets[h]=*chosen && !native::live(*chosen)?target{}:*chosen;
-			else next.hover.targets[h]=query_target(h,rays[h],lease.active() && lease.hand()==h?lease.value().key:target_key{},input);
+			const bool retaining=lease.active() && lease.hand()==h;
+			const float hold_reach=reach->current.value+(retaining?0.35f:0.f);
+			const float hold_cone=cone->current.value+(retaining?8.f:0.f);
+			rays[h]={aim.position,aim.axis[0],body.head_position,body.units_per_meter,hold_reach,hold_cone};
+			if(!retaining)
+			{
+				if(const auto chosen=queries.find(unsigned(h),input.sequence,input.reference_generation,rays[h]))
+					next.hover.targets[h]=*chosen && !native::live(*chosen)?target{}:*chosen;
+				else next.hover.targets[h]=query_target(h,rays[h],target_key{},input);
+			}
+			else next.hover.targets[h]=query_target(h,rays[h],lease.value().key,input);
 		}
 		const bool had=lease.active();
 		bool retained=!lease.value() || native::live(lease.value());

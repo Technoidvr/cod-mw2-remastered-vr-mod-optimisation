@@ -533,3 +533,27 @@ test("performance render scale, CAS sharpening, and hidden area mesh sit at the 
   for (const invalid of ["-1", "101", "", "Infinity"])
     assert.throws(() => collect({ ...initialDraft, vr_sharpening: invalid }, fixture), SettingError);
 });
+
+test("shoulder holster spacing sits in Weapon interaction and round-trips in meters across all locales", () => {
+  const field = fields.find((entry) => entry.name === "vr_holsterBackWidth")!;
+  assert.equal(field.category, "gameplay");
+  assert.equal(field.group, "settings.weaponInteraction");
+  assert.equal(field.type, "number");
+  assert.equal(field.unit, "unit.meters");
+  for (const catalog of Object.values(catalogs)) {
+    assert.ok(catalog["settings.shoulderHolsterWidth"]?.length);
+    assert.ok(catalog["settings.shoulderHolsterWidthHint"]?.length);
+  }
+  const fixture = {
+    ...state,
+    values: { vr_holsterBackWidth: 0.2 },
+    limits: {
+      vr_holsterBackWidth: { min: 0.1, max: 0.4, step: 0.01, displayScale: 1 },
+    },
+  } as SettingsState;
+  const draft = makeDraft(fixture.values, fixture.limits);
+  assert.equal(draft.vr_holsterBackWidth, "0.2");
+  assert.deepEqual(collect({ ...draft, vr_holsterBackWidth: "0.26" }, fixture), { vr_holsterBackWidth: 0.26 });
+  for (const invalid of ["0.09", "0.41", "", "NaN"])
+    assert.throws(() => collect({ ...draft, vr_holsterBackWidth: invalid }, fixture), SettingError);
+});

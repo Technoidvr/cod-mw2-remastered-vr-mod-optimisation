@@ -39,7 +39,12 @@ namespace vr::gameplay::equipment::special
 		// 14 cm high, plus the same 10 cm contact tolerance as the chest rig.
 		const body_reach_volume reach{center,scale(vec{-.03f,-.10f,-.07f},frame.units_per_meter),scale(vec{.03f,.10f,.07f},frame.units_per_meter),frame.head_yaw_axis,chest.radius};
 		const auto palm=knife_profile::palm_contact(wrist,basis,mirror,hand==1);
-		return std::min(reach.distance(palm),reach.distance(wrist.position))/reach.radius;
+		const float outside=std::min(reach.distance(palm),reach.distance(wrist.position));
+		if(outside>0.f || !std::isfinite(outside))return outside/reach.radius;
+		// Break ties inside the abdominal core box cleanly rather than returning
+		// 0.0 everywhere, while preserving exact 0 at the displayed item center.
+		const float inner=std::min(hands::length(hands::sub(palm,center)),hands::length(hands::sub(wrist.position,center)))/(reach.radius*4.f);
+		return std::isfinite(inner) ? std::min(0.25f,inner) : 0.f;
 	}
 	inline float abdominal_grab_distance(const head_pose_bridge::spatial_frame& body,anchor wrist,quat basis,quat mirror,unsigned hand)noexcept
 	{return abdominal_grab_distance_at(body,abdomen(body).position,wrist,basis,mirror,hand);}

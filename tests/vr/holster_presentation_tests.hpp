@@ -44,7 +44,7 @@ namespace holster_presentation_tests
    length(sub(rotate(rotated.rotation,{1,0,0}),rotate(first.rotation,{1,0,0})))>.1f,"waist orientation follows that same record's body yaw");
   anchor old;check(place_stowed(part,attachments::body_frame(pose,origin),layout,old) && old.position==first.position,
    "queued older render record uses its own body instead of the latest render sample");
-  for(const auto hidden:{location::back,location::overflow,location::held,location::absent})
+  for(const auto hidden:{location::left_back,location::right_back,location::overflow,location::held,location::absent})
   {auto p=part;p.at=hidden;check(!place_stowed(p,body,layout,old),"only waist storage is visible; hidden back storage stays hidden");}
   auto corrupt=pose;corrupt.body.position[0]=NAN;
   check(!place_stowed(part,attachments::body_frame(corrupt,origin),layout,old),"invalid record body cannot publish a placement");

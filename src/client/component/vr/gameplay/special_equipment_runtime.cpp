@@ -158,6 +158,13 @@ namespace vr::gameplay::equipment::special
 		void retire(){draw_intent.reset();notebook::retire();flare::retire();cliffhanger::retire();grip.stow();selection={};preview={};assets.reset();{const std::lock_guard lock(mutex);published={};submitted={};}attachments::clear_after_drain();retained.clear();}
 	}
 	bool active()noexcept {return running();}
+	bool abdomen_ready()noexcept
+	{
+		if(!running() || !sequences::chest_equipment_visible() || grip.held())return false;
+		snapshot pub;{const std::lock_guard lock(mutex);pub=published;}
+		return pub.hands_ready && selection.slot && selection.quantity>0 &&
+			pub.assets && pub.assets->weapon==selection.slot.weapon && !weapons::carry::abdominal_active(selection.slot.weapon);
+	}
 	void collect_interactions(const hi::frame& f)noexcept
 	{
 		// Mission providers have distinct map identities and share one abdominal

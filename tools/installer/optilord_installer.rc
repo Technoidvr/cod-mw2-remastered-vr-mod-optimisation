@@ -8,8 +8,8 @@
 IDI_INSTALLER_ICON ICON "../../assets/icon/Icon.ico"
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 0,5,0,0
- PRODUCTVERSION 0,5,0,0
+ FILEVERSION 0,6,0,0
+ PRODUCTVERSION 0,6,0,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS VS_FF_DEBUG
@@ -26,12 +26,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "TechnoidVR (based on Overlord VR by Aeka0)"
             VALUE "FileDescription", "OptiLord Clean Installer & Uninstaller"
-            VALUE "FileVersion", "0.5.0"
+            VALUE "FileVersion", "0.6.0"
             VALUE "InternalName", "optilord_installer"
             VALUE "LegalCopyright", "Copyright (C) 2026 Aeka0 and Overlord contributors; TechnoidVR"
             VALUE "OriginalFilename", "OptiLord-Setup.exe"
             VALUE "ProductName", "OptiLord VR Installer"
-            VALUE "ProductVersion", "0.5.0"
+            VALUE "ProductVersion", "0.6.0"
         END
     END
     BLOCK "VarFileInfo"

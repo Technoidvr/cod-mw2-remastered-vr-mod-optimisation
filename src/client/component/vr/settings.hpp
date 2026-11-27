@@ -213,6 +213,8 @@ namespace vr::settings
 	inline constexpr number_setting enemy_melee_damage{"vr_enemyMeleeDamageScale", .5f, .1f, 2.f, .1f};
 	inline constexpr number_setting grenade_throw_speed{
 	    "vr_grenadeThrowSpeedScale", 2.5f, .25f, 10.f, .25f, 2.5f};
+	inline constexpr number_setting holster_back_width{
+	    "vr_holsterBackWidth", .20f, .10f, .40f, .01f};
 	// Advanced runtime tuning only; launcher saves/reset preserve this value.
 	inline constexpr number_setting football_throw_speed{"vr_footballThrowSpeedScale", 1.5f, 1.f, 3.f, .1f};
 	inline constexpr float max_aim_assist_degrees = 10.f;
@@ -299,5 +301,6 @@ namespace vr::settings
 	                                    stabilization_strengths[1],
 	                                    stabilization_strengths[2],
 	                                    render_scale,
-	                                    sharpening};
+	                                    sharpening,
+	                                    holster_back_width};
 }

@@ -19,7 +19,15 @@ namespace vr::gameplay::weapons::quick_reload
 		const auto* live=frame->find(owner.id());
 		if(!live || !assembly || live->assembly!=assembly || live->owner.holding_hand()!=owner.holding_hand() || live->owner.rear_revision!=owner.rear_revision)
 		{timer.reset();return false;}
-		const auto slot=carry::hit(frame->holsters,frame->wrists[unsigned(owner.holding_hand())].position,3);
+		auto holsters=frame->holsters;
+		const bool active_dwell=timer.active(owner,frame->input,now);
+		auto slot=carry::hit(holsters,frame->wrists[unsigned(owner.holding_hand())].position,3);
+		if(slot==carry::location::absent && active_dwell && holsters.valid && frame->body.units_per_meter>0.f)
+		{
+			const float margin=.04f*frame->body.units_per_meter;
+			for(unsigned i=0;i<2;++i){holsters.radii[i]+=margin;holsters.volumes[i].radius+=margin;}
+			slot=carry::hit(holsters,frame->wrists[unsigned(owner.holding_hand())].position,3);
+		}
 		const int index=slot==carry::location::left_waist?0:slot==carry::location::right_waist?1:-1;
 		const bool complete=timer.update(owner,instance,frame->input,index,true,now);
 		if(timer.began() && live->authored)
@@ -28,7 +36,9 @@ namespace vr::gameplay::weapons::quick_reload
 			sound.position=live->gun.position;sound.mechanical_instance=instance;sound.quick_reload_start=true;
 			sound.definition=live->authored->reload;sound.cylinder_definition=live->authored->cylinder;
 			sound.break_definition=live->authored->break_open;feedback::publish(sound);
+			feedback::carry_readiness(owner.holding_hand(),frame->input);
 		}
+		if(complete)feedback::carry_confirmation(owner.holding_hand(),frame->input);
 		return complete;
 	}
 	class component final:public component_interface

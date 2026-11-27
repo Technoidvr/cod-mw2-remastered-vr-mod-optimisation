@@ -6,6 +6,7 @@
 #include "carry_interaction.hpp"
 #include "grenade_runtime.hpp"
 #include "special_equipment_runtime.hpp"
+#include "special_equipment_policy.hpp"
 #include "hand_interaction/runtime.hpp"
 #include "native_scripted_control.hpp"
 #include "notebook_runtime.hpp"
@@ -67,7 +68,7 @@ namespace vr::gameplay::weapons::carry
 		game::dvar_t* enabled{};
 		game::dvar_t* grip_mode{};
 		game::dvar_t* support_grip_lock{};
-		std::array<game::dvar_t*, 6> slot_settings{};
+		std::array<game::dvar_t*, 7> slot_settings{};
 		inventory owned; // Server is the only writer; readers receive a published copy.
 		std::mutex publication_mutex;
 		inventory published;
@@ -109,7 +110,77 @@ namespace vr::gameplay::weapons::carry
 		std::array<std::atomic_uint64_t, 4> render_misses{}; // record, epoch/part, ownership, origin
 		hold presented{};
 		grip_edge_gate edges;
-		back_slot_feedback slot_feedback;
+		zone_hover_feedback slot_feedback;
+		struct holster_draw_hit
+		{
+			location slot{location::absent};
+			float distance{1.f};
+		};
+		inline holster_draw_hit resolve_holster_draw(const inventory& state,
+		                                             const head_pose_bridge::spatial_frame& body,
+		                                             const holsters& slots,
+		                                             const holster_layout& layout,
+		                                             hands::vec hand_pos,
+		                                             hands::vec wrist_pos) noexcept
+		{
+			auto forgiving = layout;
+			forgiving.waist_radius += 0.04f;
+			forgiving.back_radius += 0.04f;
+			auto head_only = body;
+			head_only.body.valid = false;
+			const auto forgiving_torso = locate_holsters(body, forgiving);
+			const auto head_fallback = locate_holsters(head_only, forgiving);
+			const std::array<const holsters*, 3> tiers{&slots, &forgiving_torso, &head_fallback};
+			const std::array<hands::vec, 2> points{hand_pos, wrist_pos};
+			for (const auto* candidate_slots : tiers)
+			{
+				for (const auto& pt : points)
+				{
+					if (const auto found = draw_contact(state, *candidate_slots, pt); found != location::absent)
+						return {found, hit_distance(*candidate_slots, pt, found)};
+				}
+			}
+			return {};
+		}
+		inline location resolve_holster_hit(const holsters& slots,
+		                                    const holsters& forgiving_torso_slots,
+		                                    const holsters& head_slots,
+		                                    hands::vec hand_pos,
+		                                    hands::vec wrist_pos,
+		                                    unsigned eligible) noexcept
+		{
+			const std::array<const holsters*, 3> tiers{&slots, &forgiving_torso_slots, &head_slots};
+			for (const auto* candidate_slots : tiers)
+			{
+				if (const auto found = hit(*candidate_slots, hand_pos, eligible); found != location::absent)
+					return found;
+				if (const auto found = hit(*candidate_slots, wrist_pos, eligible); found != location::absent)
+					return found;
+			}
+			return location::absent;
+		}
+		inline feedback::hover_zone to_hover_zone(location slot) noexcept
+		{
+			switch (slot)
+			{
+			case location::left_waist: return feedback::hover_zone::left_waist;
+			case location::right_waist: return feedback::hover_zone::right_waist;
+			case location::left_back: return feedback::hover_zone::left_back;
+			case location::right_back: return feedback::hover_zone::right_back;
+			default: return feedback::hover_zone::none;
+			}
+		}
+		inline location from_hover_zone(std::uint8_t zone) noexcept
+		{
+			switch (static_cast<feedback::hover_zone>(zone))
+			{
+			case feedback::hover_zone::left_waist: return location::left_waist;
+			case feedback::hover_zone::right_waist: return location::right_waist;
+			case feedback::hover_zone::left_back: return location::left_back;
+			case feedback::hover_zone::right_back: return location::right_back;
+			default: return location::absent;
+			}
+		}
 		scripted_control::selection_pause script_pause;
 		identity preferred{};
 		std::uint32_t expected_selection{}, last_selection{};
@@ -807,7 +878,8 @@ namespace vr::gameplay::weapons::carry
 			                      slot_settings[2]->current.value,
 			                      slot_settings[3]->current.value,
 			                      slot_settings[4]->current.value,
-			                      slot_settings[5]->current.value};
+			                      slot_settings[5]->current.value,
+			                      slot_settings[6] ? slot_settings[6]->current.value : 0.20f};
 			const auto slots = locate_holsters(body, layout);
 			auto forgiving_layout = layout;
 			forgiving_layout.waist_radius += 0.04f;
@@ -816,16 +888,9 @@ namespace vr::gameplay::weapons::carry
 			auto head_only_body = body;
 			head_only_body.body.valid = false;
 			const auto head_slots = locate_holsters(head_only_body, forgiving_layout);
-			const auto resolve_holster_hit = [&](hands::vec hand_pos, hands::vec wrist_pos, unsigned eligible) noexcept
+			const auto resolve_holster = [&](hands::vec hand_pos, hands::vec wrist_pos, unsigned eligible) noexcept
 			{
-				for (const auto& candidate_slots : {slots, forgiving_torso_slots, head_slots})
-				{
-					if (const auto found = hit(candidate_slots, hand_pos, eligible); found != location::absent)
-						return found;
-					if (const auto found = hit(candidate_slots, wrist_pos, eligible); found != location::absent)
-						return found;
-				}
-				return location::absent;
+				return resolve_holster_hit(slots, forgiving_torso_slots, head_slots, hand_pos, wrist_pos, eligible);
 			};
 			if (interaction::debug::body_enabled())
 			{
@@ -836,8 +901,9 @@ namespace vr::gameplay::weapons::carry
 				diagnostic.at = input.sampled_at;
 				for (unsigned h = 0; h < 2; ++h)
 					diagnostic.hands[h] = hands[h].position;
-				constexpr std::array places{location::left_waist, location::right_waist, location::back};
-				for (unsigned n = 0; n < 3; ++n)
+				constexpr std::array places{
+				    location::left_waist, location::right_waist, location::left_back, location::right_back};
+				for (unsigned n = 0; n < places.size(); ++n)
 					if (const auto* item = owned.in_slot(places[n]))
 						diagnostic.weapons[n] = item->id.weapon;
 				interaction::debug::publish_body(diagnostic);
@@ -874,13 +940,13 @@ namespace vr::gameplay::weapons::carry
 					    detail};
 				};
 				const auto last = valid_hand(v->owner.rear) ? v->owner.rear : v->owner.support;
-				constexpr unsigned all_holster_bits = 7u;
-				constexpr unsigned back_slot_bit = 1u << 2; // weapon_holsters::hit places[2] == location::back
-				const unsigned eligible_slots = v->policy.waist ? all_holster_bits : back_slot_bit;
+				constexpr unsigned all_holster_bits = 0xFu;
+				constexpr unsigned back_slot_bits = (1u << 2) | (1u << 3);
+				const unsigned eligible_slots = v->policy.waist ? all_holster_bits : back_slot_bits;
 				const auto target = (valid_hands & (1u << static_cast<unsigned>(last)))
-				                        ? resolve_holster_hit(hands[static_cast<int>(last)].position,
-				                                              wrists[static_cast<int>(last)].position,
-				                                              eligible_slots)
+				                        ? resolve_holster(hands[static_cast<int>(last)].position,
+				                                          wrists[static_cast<int>(last)].position,
+				                                          eligible_slots)
 				                        : location::absent;
 				const bool stowing_from_rear = target != location::absent && valid_hand(v->owner.rear) &&
 				                               (event.released & (1u << static_cast<unsigned>(v->owner.rear)));
@@ -938,7 +1004,8 @@ namespace vr::gameplay::weapons::carry
 				}
 				const auto before_release = v->owner;
 				const auto dropped_pose = pose(*v, wrists, input, valid_hands);
-				const auto placement = check_release(*v, dropped_pose, body);
+				const auto placement =
+				    target == location::absent ? check_release(*v, dropped_pose, body) : release_check{dropped_pose.gun, true, true};
 				const auto& world = placement.world;
 				const bool clear = placement.clear;
 				const std::string clearance_detail =
@@ -1018,8 +1085,11 @@ namespace vr::gameplay::weapons::carry
 						? hands::length(hands::sub(wrists[off].position,
 							hands::pose_math::compose(held_pose.gun, held_pose.supports[off]).position)) / body.units_per_meter
 						: 0.0f;
+					const float waist_dist = hand_interaction::waist_distance(
+					    body, wrists, valid_hands, static_cast<hand>(off), {}, 0.20f);
+					const bool waist_supply_entry = waist_dist <= 0.20f;
 					const bool trigger_reload_reach =
-						interaction_input.trigger[off].active && interaction_input.trigger[off].down &&
+						(waist_supply_entry || (interaction_input.trigger[off].active && interaction_input.trigger[off].down)) &&
 						support_dist_meters > std::max(0.18f, held_pose.authored->acquire_meters * 1.25f);
 					if (retention == support_retention::released || trigger_reload_reach)
 					{
@@ -1151,7 +1221,7 @@ namespace vr::gameplay::weapons::carry
 					            hi::recipe::single,
 					            hi::capability::aim},
 					           edge.event,
-					           20,
+					           16,
 					           hands::length(hands::sub(point, wrists[h].position)) /
 					               (body.units_per_meter * geometry.authored->acquire_meters),
 					           1,
@@ -1176,37 +1246,19 @@ namespace vr::gameplay::weapons::carry
 						            hi::recipe::single,
 						            hi::capability::fire},
 						           edge.event,
-						           20,
+						           16,
 						           contact.distance,
 						           1,
 						           true,
 						           true});
 				}
 			}
-			const auto resolve_draw = [&](int hand_index) noexcept
-			{
-				auto forgiving = batch.layout;
-				forgiving.waist_radius += 0.04f;
-				forgiving.back_radius += 0.04f;
-				auto head_only = body;
-				head_only.body.valid = false;
-				const auto forgiving_torso = locate_holsters(body, forgiving);
-				const auto head_fallback = locate_holsters(head_only, forgiving);
-				for (const auto& candidate_slots : {slots, forgiving_torso, head_fallback})
-				{
-					if (const auto found = draw_contact(owned, candidate_slots, wrists[hand_index].position);
-					    found != location::absent)
-						return found;
-					if (const auto found = draw_contact(owned, candidate_slots, batch.hand_positions[hand_index]);
-					    found != location::absent)
-						return found;
-				}
-				return location::absent;
-			};
-			const auto place = sequences::for_player(batch.player).block_carry
-			                       ? location::absent
-			                       : resolve_draw(h);
-			const auto* item = place == location::back ? owned.next_back() : owned.in_slot(place);
+			const auto draw = sequences::for_player(batch.player).block_carry
+			                      ? holster_draw_hit{}
+			                      : resolve_holster_draw(
+			                            owned, body, slots, batch.layout, batch.hand_positions[h], wrists[h].position);
+			const auto place = draw.slot;
+			const auto* item = back_slot(place) ? owned.next_back(place) : owned.in_slot(place);
 			if (item && place != location::absent)
 			{
 				const bool support = item->policy.right_control && actor == hand::left;
@@ -1218,7 +1270,7 @@ namespace vr::gameplay::weapons::carry
 				            support ? hi::capability::aim : hi::capability::fire},
 				           edge.event,
 				           30,
-				           0,
+				           draw.distance,
 				           1,
 				           true,
 				           true});
@@ -1283,30 +1335,12 @@ namespace vr::gameplay::weapons::carry
 						break;
 					}
 				}
-			const auto resolve_draw = [&](int hand_index) noexcept
-			{
-				auto forgiving = batch.layout;
-				forgiving.waist_radius += 0.04f;
-				forgiving.back_radius += 0.04f;
-				auto head_only = body;
-				head_only.body.valid = false;
-				const auto forgiving_torso = locate_holsters(body, forgiving);
-				const auto head_fallback = locate_holsters(head_only, forgiving);
-				for (const auto& candidate_slots : {slots, forgiving_torso, head_fallback})
-				{
-					if (const auto found = draw_contact(owned, candidate_slots, batch.hand_positions[hand_index]);
-					    found != location::absent)
-						return found;
-					if (const auto found = draw_contact(owned, candidate_slots, wrists[hand_index].position);
-					    found != location::absent)
-						return found;
-				}
-				return location::absent;
-			};
 			const auto place = sequences::for_player(batch.player).block_carry
 			                       ? location::absent
-			                       : resolve_draw(h);
-			const auto* item = place == location::back ? owned.next_back() : owned.in_slot(place);
+			                       : resolve_holster_draw(
+			                             owned, body, slots, batch.layout, batch.hand_positions[h], wrists[h].position)
+			                             .slot;
+			const auto* item = back_slot(place) ? owned.next_back(place) : owned.in_slot(place);
 			const auto draw =
 			    item && hi::granted(which, hi::domain::carry, item->id) ? place : location::absent;
 			const auto claim = claim_grip(owned,
@@ -1432,67 +1466,152 @@ namespace vr::gameplay::weapons::carry
 		auto head_only_body = body;
 		head_only_body.body.valid = false;
 		const auto head_slots = locate_holsters(head_only_body, forgiving);
-		unsigned near_hands{};
-		const auto near_back_slot = [&](const holsters& candidate_slots, unsigned h) noexcept
-		{
-			if (!candidate_slots.valid) return false;
-			auto area = candidate_slots.volumes[2];
-			area.radius += .04f * body.units_per_meter;
-			return area.contains(batch.hand_positions[h]) || area.contains(wrists[h].position);
-		};
-		for (unsigned h = 0; h < 2; ++h)
-		{
-			if (!(valid_hands & (1u << h))) continue;
-			if (near_back_slot(slots, h) || near_back_slot(forgiving_torso_slots, h) || near_back_slot(head_slots, h))
-				near_hands |= 1u << h;
-		}
+		auto exit_layout = forgiving;
+		exit_layout.waist_radius += 0.04f;
+		exit_layout.back_radius += 0.04f;
+		const auto exit_torso_slots = locate_holsters(body, exit_layout);
+		const auto exit_head_slots = locate_holsters(head_only_body, exit_layout);
+		const auto chest = equipment::locate_chest(body);
+		const auto abdomen_anchor = equipment::special::abdomen(body);
+		const bool chest_visible = sequences::chest_equipment_visible();
 		const auto operated = batch.edges.pressed | batch.edges.released | batch.edges.consumed;
 		const bool blocked = sequences::for_player(batch.player).block_carry;
 		const bool allow_storage = !cheats::green_beret();
-		const auto cues = slot_feedback.update(batch.frame.input, near_hands, operated, [&](hand actor)
-		{
-			const auto h = unsigned(actor);
-			if (blocked || !input.squeeze[h].active || (batch.edges.deferred & (1u << h))) return false;
-			if (const auto* held = owned.in_hand(actor))
-			{
-				constexpr unsigned back_slot_bit = 1u << 2; // weapon_holsters::hit places[2] == location::back
-				if (!inventory::accepts(*held, location::back)) return false;
-				const bool in_back = hit(slots, batch.hand_positions[h], back_slot_bit) == location::back ||
-				                     hit(slots, wrists[h].position, back_slot_bit) == location::back ||
-				                     hit(forgiving_torso_slots, batch.hand_positions[h], back_slot_bit) == location::back ||
-				                     hit(forgiving_torso_slots, wrists[h].position, back_slot_bit) == location::back ||
-				                     hit(head_slots, batch.hand_positions[h], back_slot_bit) == location::back ||
-				                     hit(head_slots, wrists[h].position, back_slot_bit) == location::back;
-				if (!in_back) return false;
-				if (!hand_interaction::permits(actor, hand_interaction::domain::carry, held->id,
-				                               hand_interaction::recipe::single, hand_interaction::role::control))
-					return false;
-				auto preview = owned;
-				const unsigned effective_mask =
-				    (1u << h) | (held->owner.rear == actor && valid_hand(held->owner.support)
-				                    ? (1u << static_cast<unsigned>(held->owner.support))
-				                    : 0u);
-				const auto change = preview.release(held->id, effective_mask, location::back, true,
-				                                    [](const instance&) { return false; }, false, allow_storage);
-				if (change.action != outcome::stowed && change.action != outcome::exchanged) return false;
-				return check_release(*held, pose(*held, wrists, input, valid_hands), body).clear;
-			}
-			if (input.squeeze[h].down) return false;
-			const bool can_draw_back =
-			    draw_contact(owned, slots, wrists[h].position) == location::back ||
-			    draw_contact(owned, slots, batch.hand_positions[h]) == location::back ||
-			    draw_contact(owned, forgiving_torso_slots, wrists[h].position) == location::back ||
-			    draw_contact(owned, forgiving_torso_slots, batch.hand_positions[h]) == location::back ||
-			    draw_contact(owned, head_slots, wrists[h].position) == location::back ||
-			    draw_contact(owned, head_slots, batch.hand_positions[h]) == location::back;
-			if (!can_draw_back) return false;
-			const auto* back_item = owned.next_back();
-			return back_item &&
-			       hand_interaction::permits(actor, hand_interaction::domain::carry, back_item->id,
-			                                 hand_interaction::recipe::single, hand_interaction::role::control);
-		});
+		const auto cues = slot_feedback.update(
+		    batch.frame.input,
+		    valid_hands,
+		    operated,
+		    [&](hand actor, std::uint8_t latched) -> std::uint8_t
+		    {
+			    const auto h = unsigned(actor);
+			    if (const auto* held = owned.in_hand(actor))
+			    {
+				    if (held->policy.abdominal) return 0;
+				    constexpr unsigned all_holster_bits = 0xFu;
+				    constexpr unsigned back_slot_bits = (1u << 2) | (1u << 3);
+				    const unsigned eligible = held->policy.waist ? all_holster_bits : back_slot_bits;
+				    if (const auto slot = resolve_holster_hit(
+				            slots, forgiving_torso_slots, head_slots, batch.hand_positions[h], wrists[h].position, eligible);
+				        slot != location::absent)
+					    return static_cast<std::uint8_t>(to_hover_zone(slot));
+				    if (const auto latched_slot = from_hover_zone(latched);
+				        latched_slot != location::absent && inventory::accepts(*held, latched_slot))
+				    {
+					    const unsigned bit = 1u << static_cast<unsigned>(int(latched_slot) - int(location::left_waist));
+					    if (hit(exit_torso_slots, batch.hand_positions[h], bit) == latched_slot ||
+					        hit(exit_torso_slots, wrists[h].position, bit) == latched_slot ||
+					        hit(exit_head_slots, batch.hand_positions[h], bit) == latched_slot ||
+					        hit(exit_head_slots, wrists[h].position, bit) == latched_slot)
+						    return latched;
+				    }
+				    return 0;
+			    }
+			    if (const auto draw =
+			            resolve_holster_draw(owned, body, slots, layout, batch.hand_positions[h], wrists[h].position);
+			        draw.slot != location::absent)
+				    return static_cast<std::uint8_t>(to_hover_zone(draw.slot));
+			    if (const auto latched_slot = from_hover_zone(latched); latched_slot != location::absent)
+			    {
+				    const auto* item = back_slot(latched_slot) ? owned.next_back(latched_slot) : owned.in_slot(latched_slot);
+				    if (item)
+				    {
+					    const unsigned bit = 1u << static_cast<unsigned>(int(latched_slot) - int(location::left_waist));
+					    if (hit(exit_torso_slots, batch.hand_positions[h], bit) == latched_slot ||
+					        hit(exit_torso_slots, wrists[h].position, bit) == latched_slot ||
+					        hit(exit_head_slots, batch.hand_positions[h], bit) == latched_slot ||
+					        hit(exit_head_slots, wrists[h].position, bit) == latched_slot)
+						    return latched;
+				    }
+			    }
+			    if (chest_visible && chest.valid && !input.squeeze[h].down)
+			    {
+				    float best = INFINITY;
+				    feedback::hover_zone best_zone{feedback::hover_zone::none};
+				    const auto check_chest = [&](equipment::slot chest_slot, feedback::hover_zone z, bool available)
+				    {
+					    if (!available) return;
+					    const float limit = (latched == static_cast<std::uint8_t>(z)) ? 1.15f : 1.0f;
+					    const float d = equipment::chest_grab_distance(chest, chest_slot, wrists[h].position);
+					    if (d <= limit && d < best)
+					    {
+						    best = d;
+						    best_zone = z;
+					    }
+				    };
+				    check_chest(equipment::slot::knife, feedback::hover_zone::chest_knife, equipment::chest_knife_ready());
+				    check_chest(equipment::slot::tactical, feedback::hover_zone::chest_tactical, grenades::chest_slot_ready(0));
+				    check_chest(equipment::slot::lethal, feedback::hover_zone::chest_lethal, grenades::chest_slot_ready(1));
+				    if (equipment::special::abdomen_ready() && body.units_per_meter > 0.f)
+				    {
+					    const float u = body.units_per_meter;
+					    const auto b = head_pose_bridge::body_slots_frame(body);
+					    const body_reach_volume reach{abdomen_anchor.position,
+					                                  hands::scale(hands::vec{-.03f, -.10f, -.07f}, u),
+					                                  hands::scale(hands::vec{.03f, .10f, .07f}, u),
+					                                  b.head_yaw_axis,
+					                                  chest.radius};
+					    const float limit = (latched == static_cast<std::uint8_t>(feedback::hover_zone::abdomen)) ? 1.35f : 1.0f;
+					    const float d = std::min(reach.distance(wrists[h].position), reach.distance(batch.hand_positions[h])) /
+					                    reach.radius;
+					    if (std::isfinite(d) && d <= limit && d < best)
+					    {
+						    best = d;
+						    best_zone = feedback::hover_zone::abdomen;
+					    }
+				    }
+				    if (best_zone != feedback::hover_zone::none) return static_cast<std::uint8_t>(best_zone);
+			    }
+			    if (const auto* other = owned.in_hand(hand(1 - h));
+			        other && other->owner.can_fire() && !input.trigger[h].down)
+			    {
+				    const float radius =
+				        (latched == static_cast<std::uint8_t>(feedback::hover_zone::ammo_pouch)) ? 0.22f : 0.18f;
+				    if (hand_interaction::waist_distance(body, wrists, valid_hands, actor, {}, radius) <= radius)
+					    return static_cast<std::uint8_t>(feedback::hover_zone::ammo_pouch);
+			    }
+			    return 0;
+		    },
+		    [&](hand actor, std::uint8_t zone_id) -> bool
+		    {
+			    const auto h = unsigned(actor);
+			    if (blocked || !input.squeeze[h].active || (batch.edges.deferred & (1u << h))) return false;
+			    if (const auto slot = from_hover_zone(zone_id); slot != location::absent)
+			    {
+				    if (const auto* held = owned.in_hand(actor))
+				    {
+					    if (!inventory::accepts(*held, slot)) return false;
+					    if (!hand_interaction::permits(actor,
+					                                   hand_interaction::domain::carry,
+					                                   held->id,
+					                                   hand_interaction::recipe::single,
+					                                   hand_interaction::role::control))
+						    return false;
+					    auto preview = owned;
+					    const unsigned effective_mask =
+					        (1u << h) | (held->owner.rear == actor && valid_hand(held->owner.support)
+					                        ? (1u << static_cast<unsigned>(held->owner.support))
+					                        : 0u);
+					    const auto change = preview.release(held->id,
+					                                        effective_mask,
+					                                        slot,
+					                                        true,
+					                                        [](const instance&) { return false; },
+					                                        false,
+					                                        allow_storage);
+					    return change.action == outcome::stowed || change.action == outcome::exchanged;
+				    }
+				    if (input.squeeze[h].down) return false;
+				    const auto* item = back_slot(slot) ? owned.next_back(slot) : owned.in_slot(slot);
+				    return item && hand_interaction::permits(actor,
+				                                             hand_interaction::domain::carry,
+				                                             item->id,
+				                                             hand_interaction::recipe::single,
+				                                             hand_interaction::role::control);
+			    }
+			    return !owned.in_hand(actor) && hand_interaction::free(actor);
+		    });
 		for (unsigned h = 0; h < 2; ++h)
-			if (cues & (1u << h)) feedback::carry_readiness(hand(h), input);
+			if (cues[h]) feedback::zone_readiness(hand(h), static_cast<feedback::hover_zone>(cues[h]), input);
 		models_frame models;
 		models.at = input.sampled_at;
 		models.units = body.units_per_meter;
@@ -1824,13 +1943,14 @@ namespace vr::gameplay::weapons::carry
 			                           "vr_holsterBackDistance",
 			                           "vr_holsterBackDown",
 			                           "vr_holsterWaistRadius",
-			                           "vr_holsterBackRadius"};
-			constexpr std::array defaults{.23f, .60f, .22f, .24f, .16f, .20f};
-			for (std::size_t i = 0; i < 6; ++i)
+			                           "vr_holsterBackRadius",
+			                           "vr_holsterBackWidth"};
+			constexpr std::array defaults{.23f, .60f, .22f, .24f, .16f, .20f, .20f};
+			for (std::size_t i = 0; i < names.size(); ++i)
 				slot_settings[i] = dvars::register_float(names[i],
 				                                         defaults[i],
-				                                         .05f,
-				                                         1.2f,
+				                                         i == 6 ? settings::holster_back_width.min : .05f,
+				                                         i == 6 ? settings::holster_back_width.max : 1.2f,
 				                                         game::DVAR_FLAG_SAVED,
 				                                         "Body-relative weapon holster dimensions in meters");
 			if (!native_carry::initialize())
